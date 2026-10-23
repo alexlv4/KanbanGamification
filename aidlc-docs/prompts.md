@@ -109,3 +109,23 @@ Confirmo
 ```markdown
 Esta version me gusta, agrega una descriopcion, un readme para que sepan las funcionalidades y haz el release
 ```
+
+
+---
+
+## Prompt #08 — Solicitud de Nuevo Requerimiento (CR-02: Edición de Producción Limpia en Cero y Preservación de Versión de Pruebas) (2026-10-23)
+
+### Texto del Prompt:
+```markdown
+Veo que aparece el boton de test y de probar en 1 hora, puedes dejar mi version de pruebas como una version anterior y poner una sin estos botones y sin datos cargados iniciando todo en cero para que ya la puedan utilizar
+```
+
+
+---
+
+## Prompt #09 — Confirmación del Plan de Construcción Bolt 3 (CR-02 / Release v1.1.0) (2026-10-23)
+
+### Texto del Prompt:
+```markdown
+confirmo
+```

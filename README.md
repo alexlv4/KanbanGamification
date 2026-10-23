@@ -1,4 +1,4 @@
-# 🎮 Tablero Kanban Gamificado Offline — Buddy Pixel Art (`v1.0.0`)
+# 🎮 Tablero Kanban Gamificado Offline — Buddy Pixel Art (`v1.1.0`)
 
 > **Gestión de flujo de trabajo (Kanban) 100% autocontenida en un único archivo `.html`, sin servidores ni dependencias externas, impulsada por gamificación táctica y un avatar modular en Pixel Art SVG de 5 capas.**
 
@@ -12,20 +12,30 @@ El sistema reside íntegramente en [index.html](file:///home/alex/Documentos/Ant
 
 ---
 
+## 📦 Historial de Versiones (Releases)
+
+| Versión | Tipo | Descripción |
+| :--- | :--- | :--- |
+| **`v1.1.0` (Actual — `main`)** | **Producción (Clean Slate)** | Interfaz limpia sin botones de depuración/pruebas (`CR-02`: `RF-17`, `RF-18`) e inicialización completamente en cero (`0 XP`, `Nivel 1`, `0 Monedas`, `0 Racha` y `0 Tareas`) lista para uso inmediato por usuarios finales. Conserva el motor automático de revisión cada 60 minutos en segundo plano y al reabrir el archivo. |
+| **`v1.0.0` (Tag anterior)** | **Pruebas / Demo** | Incluye datos semilla de demostración precargados y los botones de diagnóstico en barra superior (`⏱️ Revisión 1h` y `🧪 Verificar (Tests)`). Disponible en los *Releases / Tags* del repositorio (`git checkout v1.0.0`). |
+
+---
+
 ## ✨ Funcionalidades Principales
 
-### 1. 🗂️ Tablero Kanban con Control de Flujo (Módulo A + `CR-01`)
+### 1. 🗂️ Tablero Kanban con Control de Flujo (Módulo A + `CR-01` + `CR-02`)
 - **4 Columnas de Flujo Oficiales (`RF-01`):**
   1. 📋 **Por Hacer** (`backlog`)
   2. ⚡ **En Proceso** (`in_progress`)
   3. 🔍 **En Revisión** (`review`)
   4. ✅ **Completado** (`done`)
+- **Inicio Limpio en Cero (`CR-02` / `RF-17` & `RF-18`):** Al abrir por primera vez la versión de producción (`v1.1.0`), todas las métricas y columnas inician vacías (`0 XP`, `Nivel 1`, `0 Monedas`, `0 Días de Racha` y `0 Tareas`) sin controles de depuración visibles.
 - **Gestión Completa de Tareas (`RF-02`):** Identificador único (`tsk_...`), Título (máx. 80 caracteres), Categoría (*Operación*, *Cliente*, *Calidad/Norma*, *Administración*), Prioridad (*Baja*, *Media*, *Alta*, *Urgente*), Esfuerzo (*1 pt Rápida*, *2 pts Media*, *3 pts Compleja*) y Fecha límite (`YYYY-MM-DD`).
 - **Interacción Multimodal (`RF-03`):** Movimiento fluido mediante **HTML5 Drag and Drop** nativo y botones laterales accesibles (`◀` y `▶`) para pantallas táctiles y teclado.
 - **Límite de Trabajo en Proceso — WIP Limit (`RF-04`):** Límite configurable de tareas simultáneas en *En Proceso* (valor por defecto: `3`) con bloqueo automático y alerta visual cuando se intenta exceder.
-- **Revisión Horaria de Tareas en Proceso (`CR-01` / `RF-15` & `RF-16`):**
+- **Revisión Horaria Automática de Tareas en Proceso (`CR-01` / `RF-15` & `RF-16`):**
   - Registra cuánto tiempo lleva cada tarea dentro de *En Proceso* mostrando una insignia en vivo (`⏱️ En proceso: Xh Ym`).
-  - Evalúa cada **60 minutos** (tanto con la pestaña abierta como al reabrir el archivo `.html` leyendo `localStorage`) las tareas estacionadas en *En Proceso* y despliega una notificación visual interactiva dentro de la aplicación.
+  - Evalúa automáticamente cada **60 minutos** (tanto con la pestaña abierta como al reabrir el archivo `.html` leyendo `localStorage`) las tareas estacionadas en *En Proceso* y despliega una notificación visual interactiva dentro de la aplicación.
 
 ---
 
@@ -69,16 +79,18 @@ El sistema reside íntegramente en [index.html](file:///home/alex/Documentos/Ant
    ```
 2. Abre directamente el archivo **`index.html`** con doble clic en cualquier navegador (Chrome, Edge, Firefox, Brave o Safari). ¡No requiere servidor web ni conexión a internet!
 
+> 💡 **¿Ya probaste la versión anterior y quieres reiniciar tu navegador en cero?**  
+> Si abriste una versión previa en el mismo navegador, tu `localStorage` conserva tus datos anteriores. Para limpiar la caché local del navegador, abre la consola del navegador (`F12`) y ejecuta `localStorage.removeItem('kanban_gamified_v1'); location.reload();`.
+
 ---
 
 ## 🧪 Ejecución de Pruebas Automatizadas (AI-DLC TDD)
 
-El proyecto cuenta con doble verificación automatizada:
-1. **Desde el navegador (sin dependencias):** Haz clic en el botón **`🧪 Verificar (Tests)`** en la esquina superior derecha de la aplicación.
-2. **Desde la terminal con Node.js Test Runner nativo:**
-   ```bash
-   node --test tests/kanban_gamified.test.js
-   ```
+Para ejecutar la suite completa de pruebas unitarias y de integración (`RF-01` a `RF-18` y `RNF-01` a `RNF-04`) desde la terminal:
+```bash
+node --test tests/kanban_gamified.test.js
+```
+*(Si deseas usar la versión con botones interactivos de prueba en pantalla, puedes consultar el release anterior `git checkout v1.0.0`).*
 
 ---
 
@@ -91,12 +103,15 @@ aidlc-docs/
 ├── prompts.md                                          # Bitácora secuencial de todos los prompts del usuario
 ├── requirements/
 │   ├── inception_tablero_kanban_gamificado.md          # PRFAQ y Matriz Maestra RF-01..RF-14 / RNF-01..RNF-04
-│   └── CR-01_revision_horaria_en_proceso.md            # Change Request CR-01 (RF-15 y RF-16)
+│   ├── CR-01_revision_horaria_en_proceso.md            # Change Request CR-01 (RF-15 y RF-16)
+│   └── CR-02_version_produccion_en_cero.md             # Change Request CR-02 (RF-17 y RF-18: Producción en cero)
 ├── story-artifacts/
-│   └── user_stories.md                                 # Historias de Usuario US-01 a US-06 con criterios Gherkin
+│   └── user_stories.md                                 # Historias de Usuario US-01 a US-07 con criterios Gherkin
 ├── plans/
 │   ├── bolt_01_master_plan.md                          # Plan Maestro Bolt 1 (100% completado)
-│   └── bolt_02_cr01_hourly_review_plan.md              # Plan de Construcción Bolt 2 - CR-01 (100% completado)
+│   ├── bolt_02_cr01_hourly_review_plan.md              # Plan de Construcción Bolt 2 - CR-01 (100% completado)
+│   └── bolt_03_cr02_production_clean_slate_plan.md     # Plan de Construcción Bolt 3 - CR-02 (100% completado)
 └── design-artifacts/
     └── architecture_and_data_model.md                  # Diagramas C4/Mermaid, DDD Bounded Contexts y JSON Schema
 ```
+

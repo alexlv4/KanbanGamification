@@ -98,7 +98,11 @@ test('RF-03 & RF-04: Movimiento entre columnas y restricción de flujo WIP Limit
 
   assert.equal(store.getState().settings.wipLimit, 3, 'El límite WIP por defecto debe ser 3');
 
-  // Ya existe 1 tarea en in_progress en el estado semilla; agregamos 2 más y las movemos a in_progress
+  // El estado inicial empieza con 0 tareas; creamos 4 tareas y movemos 3 a in_progress
+  const t0 = store.dispatch({
+    type: 'CREATE_TASK',
+    payload: { title: 'Tarea WIP 1', category: 'Operación', priority: 'Baja', effort: 1, deadline: '2026-10-29' }
+  }).task;
   const t1 = store.dispatch({
     type: 'CREATE_TASK',
     payload: { title: 'Tarea WIP 2', category: 'Operación', priority: 'Baja', effort: 1, deadline: '2026-10-29' }
@@ -112,6 +116,7 @@ test('RF-03 & RF-04: Movimiento entre columnas y restricción de flujo WIP Limit
     payload: { title: 'Tarea WIP 4 (Excede)', category: 'Administración', priority: 'Alta', effort: 2, deadline: '2026-10-29' }
   }).task;
 
+  assert.equal(store.dispatch({ type: 'MOVE_TASK', id: t0.id, targetStatus: 'in_progress' }).success, true);
   assert.equal(store.dispatch({ type: 'MOVE_TASK', id: t1.id, targetStatus: 'in_progress' }).success, true);
   assert.equal(store.dispatch({ type: 'MOVE_TASK', id: t2.id, targetStatus: 'in_progress' }).success, true);
 
@@ -168,13 +173,26 @@ test('RF-08, RF-09 & RF-10: 5 Capas SVG, Catálogo de 15 Sprites Modulares y Rea
   const storage = createMemoryStorage();
   const store = App.createAppStore(storage);
 
-  // Compra válida en la tienda (head_cap cuesta 25 monedas, nivel mín 1; usuario tiene 120 monedas y nivel 3)
+  // Completamos una tarea de Esfuerzo 3 a tiempo para obtener 25 monedas
+  const t = store.dispatch({
+    type: 'CREATE_TASK',
+    payload: { title: 'Ganar monedas para tienda', category: 'Operación', priority: 'Urgente', effort: 3, deadline: '2026-10-25' }
+  }).task;
+  store.dispatch({ type: 'MOVE_TASK', id: t.id, targetStatus: 'done', nowISO: '2026-10-23T10:00:00.000Z' });
+  assert.equal(store.getState().user.coins, 25);
+
+  // Compra válida en la tienda (head_cap cuesta 25 monedas, nivel mín 1)
   const buyRes = store.dispatch({ type: 'BUY_SPRITE', spriteId: 'head_cap' });
   assert.equal(buyRes.success, true);
-  assert.equal(store.getState().user.coins, 95);
+  assert.equal(store.getState().user.coins, 0);
   assert.equal(store.getState().buddy.equipped.head, 'head_cap');
 
   // Micro-reacción de estrés cuando existe tarea vencida en En Proceso (RF-10)
+  const overdueTask = store.dispatch({
+    type: 'CREATE_TASK',
+    payload: { title: 'Tarea en proceso con fecha vencida', category: 'Cliente', priority: 'Alta', effort: 2, deadline: '2026-10-25' }
+  }).task;
+  store.dispatch({ type: 'MOVE_TASK', id: overdueTask.id, targetStatus: 'in_progress', nowISO: '2026-10-23T10:00:00.000Z' });
   const stressed = App.BuddyContext.hasOverdueTasksInProgress(store.getState(), '2026-10-30');
   assert.equal(stressed, true);
 });
@@ -183,10 +201,21 @@ test('RF-11, RF-12, RF-13 & RF-14 + Matriz de Trazabilidad (Aislamiento, Idempot
   const storage = createMemoryStorage();
   const store1 = App.createAppStore(storage);
 
-  // Mover la tarea inicial a Completado
+  // Crear y mover una tarea a Completado
+  const created = store1.dispatch({
+    type: 'CREATE_TASK',
+    nowISO: '2026-10-20T09:00:00.000Z',
+    payload: {
+      title: 'Documentar lineamientos de seguridad',
+      category: 'Calidad/Norma',
+      priority: 'Alta',
+      effort: 2,
+      deadline: '2026-10-25'
+    }
+  });
   const moveDone = store1.dispatch({
     type: 'MOVE_TASK',
-    id: 'tsk_8f12a',
+    id: created.task.id,
     targetStatus: 'done',
     nowISO: '2026-10-23T18:00:00.000Z'
   });
@@ -211,7 +240,7 @@ test('RF-11, RF-12, RF-13 & RF-14 + Matriz de Trazabilidad (Aislamiento, Idempot
   const csv = App.PersistenceContext.generateProductivityCsv(store2.getState());
   const lines = csv.split('\n');
   assert.equal(lines[0], 'ID,Título,Categoría,Prioridad,Fecha_Terminación,XP_Generado');
-  assert.match(lines[1], /^tsk_8f12a,Documentar lineamientos de seguridad,Calidad\/Norma,Alta,2026-10-23T18:00:00\.000Z,45$/);
+  assert.match(lines[1], /^tsk_[a-z0-9]+,Documentar lineamientos de seguridad,Calidad\/Norma,Alta,2026-10-23T18:00:00\.000Z,45$/);
 });
 
 test('CR-01 (RF-15 & RF-16): Revisión horaria, seguimiento de permanencia en En Proceso y notificación visual', () => {
@@ -256,10 +285,33 @@ test('CR-01 (RF-15 & RF-16): Revisión horaria, seguimiento de permanencia en En
   });
   assert.equal(dueCheck.isHourDue, true, 'RF-15: Debe detectar que transcurrió >= 1 hora al reabrir o por temporizador');
   assert.equal(dueCheck.shouldNotify, true, 'RF-16: Debe notificar porque existen tareas en En Proceso');
-  assert.equal(dueCheck.tasksInProcess.length, 2, 'RF-16: Debe incluir todas las tareas actuales en En Proceso');
+  assert.equal(dueCheck.tasksInProcess.length, 1, 'RF-16: Debe incluir todas las tareas actuales en En Proceso');
 
   const trackedItem = dueCheck.tasksInProcess.find(t => t.id === created.task.id);
   assert.equal(trackedItem.duration.formatted, '1h 15m', 'RF-16: Debe calcular con exactitud el tiempo que lleva en En Proceso');
   assert.equal(reopenedStore.getState().settings.lastHourlyCheckAt, '2026-10-23T11:30:00.000Z', 'RF-15: Debe persistir el nuevo lastHourlyCheckAt');
 });
+
+test('CR-02 (RF-17 & RF-18): Versión de producción sin botones de depuración e inicio en cero (Clean Slate)', () => {
+  const storage = createMemoryStorage();
+  const store = App.createAppStore(storage, '2026-10-23T10:00:00.000Z');
+  const state = store.getState();
+
+  assert.equal(state.user.xp, 0, 'RF-18: El usuario debe iniciar con 0 XP');
+  assert.equal(state.user.level, 1, 'RF-18: El usuario debe iniciar en Nivel 1');
+  assert.equal(state.user.coins, 0, 'RF-18: El usuario debe iniciar con 0 Monedas');
+  assert.equal(state.user.streakDays, 0, 'RF-18: El usuario debe iniciar con 0 días de racha');
+  assert.equal(state.user.lastActiveDate, null, 'RF-18: El usuario no debe tener fecha previa de actividad');
+  assert.equal(state.tasks.length, 0, 'RF-18: El tablero debe iniciar con 0 tareas precargadas');
+
+  // RF-17: La interfaz HTML no debe incluir los botones de prueba ni el modal de auto-test
+  assert.equal(htmlContent.includes('id="btnRunSelfTests"'), false, 'RF-17: No debe existir el botón 🧪 Verificar (Tests)');
+  assert.equal(htmlContent.includes('id="btnHourlyReviewCheck"'), false, 'RF-17: No debe existir el botón manual ⏱️ Revisión 1h');
+  assert.equal(htmlContent.includes('id="modalSelfTests"'), false, 'RF-17: No debe existir el modal de diagnóstico de pruebas');
+
+  // Verificar que la suite embebida siga pasando al 100% programáticamente
+  const embeddedReport = App.runEmbeddedTestSuite();
+  assert.equal(embeddedReport.failed, 0, 'La suite embebida debe pasar con 0 fallos');
+});
+
 

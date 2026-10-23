@@ -218,3 +218,36 @@ Feature: Revisión Horaria y Notificación de Tareas en Proceso
     When se ejecuta la revisión horaria automática
     Then se actualiza "settings.lastHourlyCheckAt" sin mostrar alerta de tareas estancadas
 ```
+
+
+---
+
+## US-07: Versión de Producción Limpia e Inicio en Cero (CR-02)
+**Como** usuario final que adopta el tablero Kanban gamificado para su trabajo diario,  
+**Quiero** que la aplicación inicie con todas las estadísticas y tareas en cero y sin botones técnicos de prueba en la barra superior, conservando la versión de pruebas como una versión anterior,  
+**Para** comenzar a registrar mis propias tareas desde el Nivel 1 sin datos de ejemplo ni controles de depuración visibles.
+
+- **Requerimientos vinculados:** `CR-02`, `RF-17`, `RF-18`
+
+### Criterios de Aceptación (Gherkin)
+```gherkin
+Feature: Edición de Producción Limpia e Inicio en Cero
+
+  Scenario: Arranque inicial en cero para nuevos usuarios
+    Given que el navegador no tiene datos previos en localStorage bajo "kanban_gamified_v1"
+    When el usuario abre el archivo "index.html" de producción
+    Then las estadísticas del usuario deben iniciar en:
+      | atributo       | valor |
+      | xp             | 0     |
+      | level          | 1     |
+      | coins          | 0     |
+      | streakDays     | 0     |
+      | lastActiveDate | null  |
+    And la lista de tareas "tasks" debe estar vacía (0 tareas en las 4 columnas)
+
+  Scenario: Ausencia de botones de prueba en la interfaz de producción
+    Given que el usuario visualiza la barra superior de herramientas en "index.html"
+    Then solo deben mostrarse los botones operativos ("Nueva Tarea", "Exportar JSON", "Importar JSON", "Exportar CSV")
+    And no deben existir en la barra los botones "Revisión 1h" ni "Verificar (Tests)"
+    And el temporizador automático de revisión cada 60 minutos continúa operando de forma transparente
+```

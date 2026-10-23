@@ -760,8 +760,6 @@
       <button type="button" id="btnImportJsonTrigger" title="Restaurar respaldo desde archivo .json (RF-13)">📂 Importar JSON</button>
       <input type="file" id="fileImportJson" accept=".json" hidden>
       <button type="button" id="btnExportCsv" title="Descargar reporte de productividad .csv (RF-14)">📊 Exportar CSV</button>
-      <button type="button" id="btnHourlyReviewCheck" title="Ejecutar o verificar revisión horaria de tareas En Proceso (CR-01)">⏱️ Revisión 1h</button>
-      <button type="button" id="btnRunSelfTests" title="Ejecutar suite de verificación AI-DLC">🧪 Verificar (Tests)</button>
     </div>
   </header>
 
@@ -895,21 +893,6 @@
     </div>
     <div class="modal-footer">
       <button type="button" id="btnDoneShopModal" class="btn-primary">Listo</button>
-    </div>
-  </dialog>
-
-  <!-- Modal Nativo: Diagnóstico y Suite de Pruebas Automatizadas In-Browser -->
-  <dialog id="modalSelfTests" aria-labelledby="modalTestsTitle">
-    <div class="modal-header">
-      <h3 id="modalTestsTitle">🧪 Suite de Verificación Automatizada (AI-DLC)</h3>
-      <button type="button" id="btnCloseTestsModal" class="icon-btn" aria-label="Cerrar pruebas">✕</button>
-    </div>
-    <div class="modal-body">
-      <div id="selfTestSummary" style="font-family:var(--font-mono); font-weight:700; margin-bottom:0.75rem;"></div>
-      <pre id="selfTestOutput" style="background:var(--bg-elevated); padding:0.85rem; border-radius:var(--radius-sm); border:1px solid var(--border-subtle); font-family:var(--font-mono); font-size:0.78rem; white-space:pre-wrap;"></pre>
-    </div>
-    <div class="modal-footer">
-      <button type="button" id="btnCloseTestsFooter" class="btn-primary">Cerrar</button>
     </div>
   </dialog>
 
@@ -1593,16 +1576,15 @@
       const PersistenceContext = {
         createInitialState(nowISO) {
           const iso = nowISO || new Date().toISOString();
-          const today = formatDateYMD(iso);
           return {
             version: SCHEMA_VERSION,
             lastUpdated: iso,
             user: {
-              xp: 350,
-              level: 3,
-              coins: 120,
-              streakDays: 4,
-              lastActiveDate: today
+              xp: 0,
+              level: 1,
+              coins: 0,
+              streakDays: 0,
+              lastActiveDate: null
             },
             buddy: {
               equipped: {
@@ -1623,20 +1605,7 @@
               wipLimit: 3,
               lastHourlyCheckAt: iso
             },
-            tasks: [
-              {
-                id: 'tsk_8f12a',
-                title: 'Documentar lineamientos de seguridad',
-                category: 'Calidad/Norma',
-                priority: 'Alta',
-                effort: 2,
-                status: 'in_progress',
-                deadline: '2026-10-25',
-                createdAt: '2026-10-22T14:30:00.000Z',
-                inProgressSince: '2026-10-22T14:30:00.000Z',
-                completedAt: null
-              }
-            ]
+            tasks: []
           };
         },
 
@@ -2209,10 +2178,6 @@
         const elCatalogContainer = document.getElementById('catalogContainer');
         const elShopBalance = document.getElementById('shopModalBalance');
 
-        const modalSelfTests = document.getElementById('modalSelfTests');
-        const elSelfTestSummary = document.getElementById('selfTestSummary');
-        const elSelfTestOutput = document.getElementById('selfTestOutput');
-
         function showBanner(message, isInfo) {
           elAlertText.textContent = message;
           elAlertBanner.className = isInfo ? 'alert-banner info' : 'alert-banner';
@@ -2658,14 +2623,6 @@
         document.getElementById('btnDismissAlert').addEventListener('click', hideBanner);
         document.getElementById('btnDismissHourlyToast').addEventListener('click', hideHourlyReviewToast);
 
-        // Botón manual/inmediato de Revisión Horaria (CR-01)
-        document.getElementById('btnHourlyReviewCheck').addEventListener('click', () => {
-          const checkRes = store.dispatch({ type: 'RUN_HOURLY_CHECK', force: true });
-          if (!checkRes.shouldNotify) {
-            showBanner('✅ Revisión horaria completada: No hay tareas pendientes en la columna "En Proceso".', true);
-          }
-        });
-
         // Tienda Buddy Modal
         document.getElementById('btnOpenShop').addEventListener('click', () => {
           renderShopCatalog(store.getState());
@@ -2731,17 +2688,6 @@
           showBanner(`📊 Reporte CSV descargado: ${fileName}`, true);
         });
 
-        // Runner de Pruebas Automatizadas In-Browser
-        document.getElementById('btnRunSelfTests').addEventListener('click', () => {
-          const report = runEmbeddedTestSuite();
-          elSelfTestSummary.textContent = `Resultado: ${report.passed}/${report.total} pruebas en VERDE (${report.failed} fallos)`;
-          elSelfTestSummary.style.color = report.failed === 0 ? 'var(--accent-success)' : 'var(--accent-danger)';
-          elSelfTestOutput.textContent = report.logs.join('\n');
-          modalSelfTests.showModal();
-        });
-        document.getElementById('btnCloseTestsModal').addEventListener('click', () => modalSelfTests.close());
-        document.getElementById('btnCloseTestsFooter').addEventListener('click', () => modalSelfTests.close());
-
         // Render inicial + Evaluación de Revisión Horaria al reabrir el archivo HTML (CR-01 / RF-15)
         const initial = store.getState();
         renderBuddy(initial, {});
@@ -2785,10 +2731,12 @@
         };
 
         const testStore = createAppStore(mockStorage, '2026-10-23T10:00:00.000Z');
+        const initialClean = testStore.getState();
 
-        // 1. RF-01 & RF-11: Estado inicial y clave localStorage
+        // 1. RF-01, RF-11 & RF-18: Estado inicial en cero y clave localStorage
         assert(Boolean(mem[STORAGE_KEY]), 'RF-11: Sincronización síncrona en clave única kanban_gamified_v1');
         assert(COLUMNS.length === 4, 'RF-01: Existen exactamente 4 columnas de flujo (backlog, in_progress, review, done)');
+        assert(initialClean.user.xp === 0 && initialClean.user.level === 1 && initialClean.user.coins === 0 && initialClean.tasks.length === 0, 'RF-18: Inicia completamente en cero sin tareas precargadas');
 
         // 2. RF-02: Validación de tareas (título <= 80 chars, campos obligatorios)
         const invalidRes = testStore.dispatch({
@@ -2800,16 +2748,29 @@
         const validRes = testStore.dispatch({
           type: 'CREATE_TASK',
           nowISO: '2026-10-23T10:00:00.000Z',
-          payload: { title: 'Tarea de prueba TDD', category: 'Cliente', priority: 'Urgente', effort: 3, deadline: '2026-10-25' }
+          payload: { title: 'Tarea de prueba TDD 1', category: 'Cliente', priority: 'Urgente', effort: 3, deadline: '2026-10-25' }
         });
         assert(validRes.success === true && validRes.task.id.startsWith('tsk_'), 'RF-02: Crea tarea válida con UUID/prefijo tsk_');
 
+        const secondTask = testStore.dispatch({
+          type: 'CREATE_TASK',
+          nowISO: '2026-10-23T10:00:00.000Z',
+          payload: { title: 'Tarea de prueba TDD 2', category: 'Operación', priority: 'Alta', effort: 2, deadline: '2026-10-25' }
+        });
+
         // 3. RF-04: Límite WIP en En Proceso
         testStore.dispatch({ type: 'SET_WIP_LIMIT', wipLimit: 1 });
-        const blockedMove = testStore.dispatch({
+        testStore.dispatch({
           type: 'MOVE_TASK',
           id: validRes.task.id,
-          targetStatus: 'in_progress'
+          targetStatus: 'in_progress',
+          nowISO: '2026-10-23T10:00:00.000Z'
+        });
+        const blockedMove = testStore.dispatch({
+          type: 'MOVE_TASK',
+          id: secondTask.task.id,
+          targetStatus: 'in_progress',
+          nowISO: '2026-10-23T10:00:00.000Z'
         });
         assert(blockedMove.success === false && blockedMove.wipBlocked === true, 'RF-04: Bloquea movimiento cuando se alcanza el WIP Limit');
 

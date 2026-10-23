@@ -1,0 +1,2626 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>Tablero Kanban Gamificado Offline — Buddy Pixel Art</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg-canvas: #0b0f19;
+      --bg-surface: #131b2e;
+      --bg-card: #1b253d;
+      --bg-card-hover: #23304f;
+      --bg-elevated: #0f1626;
+      --border-subtle: #2e3d60;
+      --border-focus: #60a5fa;
+      --text-primary: #f8fafc;
+      --text-secondary: #cbd5e1;
+      --text-muted: #94a3b8;
+      --accent-primary: #38bdf8;
+      --accent-primary-ink: #082f49;
+      --accent-xp: #a855f7;
+      --accent-coin: #facc15;
+      --accent-streak: #fb923c;
+      --accent-success: #4ade80;
+      --accent-danger: #f87171;
+      --accent-warning: #fbbf24;
+      --prio-low: #38bdf8;
+      --prio-med: #4ade80;
+      --prio-high: #fbbf24;
+      --prio-urg: #f87171;
+      --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+      scrollbar-color: #3b4d77 #0b0f19;
+      scrollbar-width: thin;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-canvas);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      line-height: 1.45;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    button, input, select {
+      font-family: inherit;
+      font-size: 0.9rem;
+      color: var(--text-primary);
+    }
+
+    button {
+      cursor: pointer;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-card);
+      padding: 0.45rem 0.85rem;
+      border-radius: var(--radius-sm);
+      font-weight: 600;
+      transition: background 0.15s ease, transform 0.1s ease, border-color 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    button:hover:not(:disabled) {
+      background: var(--bg-card-hover);
+      border-color: var(--accent-primary);
+    }
+
+    button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 2px solid var(--border-focus);
+      outline-offset: 2px;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background: var(--accent-primary);
+      color: var(--accent-primary-ink);
+      border-color: var(--accent-primary);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: #7dd3fc;
+      color: var(--accent-primary-ink);
+    }
+
+    .btn-danger {
+      border-color: rgba(248, 113, 113, 0.45);
+      color: #fca5a5;
+    }
+
+    /* Header & Gamification HUD */
+    header.app-header {
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 0.85rem 1.25rem;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 1.25rem;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+
+    .buddy-hud {
+      display: flex;
+      align-items: center;
+      gap: 0.9rem;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      padding: 0.5rem 0.85rem;
+      border-radius: var(--radius-md);
+    }
+
+    .buddy-stage {
+      width: 72px;
+      height: 72px;
+      background: #172036;
+      border: 2px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      image-rendering: pixelated;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .buddy-stage.is-stressed {
+      border-color: var(--accent-danger);
+      box-shadow: 0 0 12px rgba(248, 113, 113, 0.45);
+    }
+
+    .buddy-stage.is-bouncing {
+      animation: buddyBounce 0.65s cubic-bezier(0.28, 0.84, 0.42, 1);
+    }
+
+    @keyframes buddyBounce {
+      0%, 100% { transform: translateY(0) scale(1); }
+      30% { transform: translateY(-10px) scale(1.08, 0.94); }
+      55% { transform: translateY(0) scale(0.96, 1.04); }
+      75% { transform: translateY(-5px) scale(1.03); }
+    }
+
+    .buddy-svg-layer {
+      position: absolute;
+      inset: 4px;
+      width: calc(100% - 8px);
+      height: calc(100% - 8px);
+      shape-rendering: crispEdges;
+      image-rendering: pixelated;
+      pointer-events: none;
+    }
+
+    .layer-0 { z-index: 1; }
+    .layer-1 { z-index: 2; }
+    .layer-2 { z-index: 3; }
+    .layer-3 { z-index: 4; }
+    .layer-4 { z-index: 5; }
+    .layer-stress { z-index: 6; }
+
+    .buddy-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+
+    .buddy-title-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .buddy-name {
+      font-weight: 700;
+      font-size: 1rem;
+      letter-spacing: 0.01em;
+    }
+
+    .status-pill {
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.12rem 0.45rem;
+      border-radius: 999px;
+      text-transform: uppercase;
+      background: rgba(74, 222, 128, 0.16);
+      color: var(--accent-success);
+      border: 1px solid rgba(74, 222, 128, 0.4);
+    }
+
+    .status-pill.stressed {
+      background: rgba(248, 113, 113, 0.18);
+      color: #fca5a5;
+      border-color: var(--accent-danger);
+    }
+
+    /* Stats Bar */
+    .stats-grid {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.85rem;
+    }
+
+    .stat-card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 0.45rem 0.75rem;
+      min-width: 128px;
+    }
+
+    .stat-label {
+      font-size: 0.73rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .stat-value {
+      font-size: 1.05rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      display: flex;
+      align-items: baseline;
+      gap: 0.35rem;
+    }
+
+    .xp-progress-wrap {
+      flex: 1;
+      min-width: 190px;
+      max-width: 310px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 0.45rem 0.75rem;
+    }
+
+    .xp-bar-track {
+      width: 100%;
+      height: 8px;
+      background: #1e293b;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 0.3rem;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .xp-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #8b5cf6, #ec4899);
+      transition: width 0.3s ease;
+    }
+
+    .toolbar-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    /* Alert Banner for WIP or Notifications */
+    .alert-banner {
+      margin: 0.75rem 1.25rem 0;
+      padding: 0.65rem 1rem;
+      border-radius: var(--radius-sm);
+      background: rgba(248, 113, 113, 0.14);
+      border: 1px solid var(--accent-danger);
+      color: #fecaca;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    .alert-banner[hidden] {
+      display: none !important;
+    }
+
+    .alert-banner.info {
+      background: rgba(56, 189, 248, 0.14);
+      border-color: var(--accent-primary);
+      color: #bae6fd;
+    }
+
+    /* Kanban Board Layout */
+    main.board-container {
+      flex: 1;
+      padding: 1rem 1.25rem 1.5rem;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(260px, 1fr));
+      gap: 1rem;
+      align-items: start;
+      overflow-x: auto;
+    }
+
+    section.kanban-column {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      display: flex;
+      flex-direction: column;
+      min-height: 70vh;
+      max-height: calc(100vh - 140px);
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    section.kanban-column.drag-over {
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35);
+    }
+
+    section.kanban-column.wip-locked {
+      border-color: var(--accent-danger);
+      box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.35);
+    }
+
+    .column-header {
+      padding: 0.75rem 0.9rem;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      background: var(--bg-elevated);
+      border-radius: var(--radius-md) var(--radius-md) 0 0;
+    }
+
+    .column-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
+    .column-count {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      background: var(--bg-card);
+      padding: 0.12rem 0.5rem;
+      border-radius: 999px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .column-count.wip-at-limit {
+      background: rgba(251, 191, 36, 0.2);
+      color: var(--accent-warning);
+      border-color: var(--accent-warning);
+    }
+
+    .column-count.wip-blocked-badge {
+      background: rgba(248, 113, 113, 0.22);
+      color: #fca5a5;
+      border-color: var(--accent-danger);
+    }
+
+    .wip-inline-control {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.76rem;
+      color: var(--text-secondary);
+    }
+
+    .wip-inline-control input {
+      width: 46px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 4px;
+      padding: 0.1rem 0.3rem;
+      text-align: center;
+      font-family: var(--font-mono);
+    }
+
+    .task-list {
+      padding: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.7rem;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .empty-column {
+      border: 1px dashed var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 1.5rem 0.75rem;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    /* Task Card */
+    article.task-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-left: 4px solid var(--prio-low);
+      border-radius: var(--radius-sm);
+      padding: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+      cursor: grab;
+      transition: transform 0.12s ease, border-color 0.12s ease;
+    }
+
+    article.task-card:active {
+      cursor: grabbing;
+    }
+
+    article.task-card.dragging {
+      opacity: 0.45;
+      transform: scale(0.98);
+    }
+
+    article.task-card[data-priority="Baja"] { border-left-color: var(--prio-low); }
+    article.task-card[data-priority="Media"] { border-left-color: var(--prio-med); }
+    article.task-card[data-priority="Alta"] { border-left-color: var(--prio-high); }
+    article.task-card[data-priority="Urgente"] { border-left-color: var(--prio-urg); }
+
+    .task-top-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.12rem 0.45rem;
+      border-radius: 4px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+    }
+
+    .badge-prio-Urgente { color: #fecaca; border-color: var(--prio-urg); background: rgba(248, 113, 113, 0.15); }
+    .badge-prio-Alta { color: #fde68a; border-color: var(--prio-high); background: rgba(251, 191, 36, 0.15); }
+    .badge-prio-Media { color: #bbf7d0; border-color: var(--prio-med); background: rgba(74, 222, 128, 0.14); }
+    .badge-prio-Baja { color: #bae6fd; border-color: var(--prio-low); background: rgba(56, 189, 248, 0.14); }
+
+    .task-title {
+      font-size: 0.94rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      word-break: break-word;
+    }
+
+    .task-details-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.76rem;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+
+    .deadline-tag.overdue {
+      color: #fca5a5;
+      font-weight: 700;
+    }
+
+    .task-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 0.4rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.07);
+      gap: 0.35rem;
+    }
+
+    .move-btn-group, .crud-btn-group {
+      display: flex;
+      gap: 0.3rem;
+    }
+
+    .icon-btn {
+      padding: 0.25rem 0.55rem;
+      font-size: 0.78rem;
+      min-height: 28px;
+    }
+
+    /* Native Modals (<dialog>) */
+    dialog {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      border: 1px solid var(--border-focus);
+      border-radius: var(--radius-lg);
+      padding: 0;
+      max-width: 640px;
+      width: calc(100% - 2rem);
+      margin: auto;
+      box-shadow: var(--shadow-md);
+    }
+
+    dialog::backdrop {
+      background: rgba(5, 8, 16, 0.78);
+    }
+
+    .modal-header {
+      padding: 1rem 1.25rem;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-body {
+      padding: 1.25rem;
+      max-height: 76vh;
+      overflow-y: auto;
+    }
+
+    .modal-footer {
+      padding: 0.85rem 1.25rem;
+      background: var(--bg-elevated);
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.6rem;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.9rem;
+    }
+
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .form-field.full-width {
+      grid-column: 1 / -1;
+    }
+
+    .form-field label {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .form-field input, .form-field select {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 0.55rem 0.7rem;
+    }
+
+    /* Shop / Catalog Grid */
+    .catalog-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+
+    .sprite-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 0.7rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    .sprite-card.equipped {
+      border-color: var(--accent-success);
+      background: rgba(74, 222, 128, 0.08);
+    }
+
+    .sprite-preview-box {
+      width: 48px;
+      height: 48px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    @media (max-width: 960px) {
+      header.app-header {
+        grid-template-columns: 1fr;
+      }
+      main.board-container {
+        grid-template-columns: repeat(2, minmax(260px, 1fr));
+      }
+    }
+
+    @media (max-width: 600px) {
+      main.board-container {
+        grid-template-columns: 1fr;
+      }
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <!-- Módulo C: Avatar Modular ("Buddy") en 5 Capas SVG (RF-08, RF-10) -->
+    <div class="buddy-hud">
+      <div id="buddyStage" class="buddy-stage" title="Buddy Pixel Art (16x16 SVG Multicapa)" aria-label="Avatar Buddy en Pixel Art">
+        <svg class="buddy-svg-layer layer-0" id="svgLayerBase" viewBox="0 0 16 16" shape-rendering="crispEdges"></svg>
+        <svg class="buddy-svg-layer layer-1" id="svgLayerBody" viewBox="0 0 16 16" shape-rendering="crispEdges"></svg>
+        <svg class="buddy-svg-layer layer-2" id="svgLayerHead" viewBox="0 0 16 16" shape-rendering="crispEdges"></svg>
+        <svg class="buddy-svg-layer layer-3" id="svgLayerHand" viewBox="0 0 16 16" shape-rendering="crispEdges"></svg>
+        <svg class="buddy-svg-layer layer-4" id="svgLayerAura" viewBox="0 0 16 16" shape-rendering="crispEdges"></svg>
+        <svg class="buddy-svg-layer layer-stress" id="svgLayerStress" viewBox="0 0 16 16" shape-rendering="crispEdges"></svg>
+      </div>
+      <div class="buddy-meta">
+        <div class="buddy-title-row">
+          <span class="buddy-name">Buddy Pixel</span>
+          <span id="buddyMoodBadge" class="status-pill">Enfocado</span>
+        </div>
+        <span id="buddyMoodSubtext" style="font-size: 0.78rem; color: var(--text-secondary);">Sin cuellos de botella</span>
+        <button type="button" id="btnOpenShop" style="margin-top: 0.25rem; font-size: 0.78rem; padding: 0.28rem 0.6rem;">
+          🎨 Tienda / Armario (15)
+        </button>
+      </div>
+    </div>
+
+    <!-- Módulo B: Estadísticas de Gamificación (RF-05, RF-06, RF-07) -->
+    <div class="stats-grid" aria-label="Indicadores de Gamificación">
+      <div class="stat-card">
+        <div class="stat-label">Nivel Actual</div>
+        <div class="stat-value" style="color: var(--accent-primary);">
+          <span>NVL</span>
+          <span id="statLevel">1</span>
+        </div>
+      </div>
+
+      <div class="xp-progress-wrap">
+        <div style="display:flex; justify-content:space-between; font-size:0.76rem;">
+          <span class="stat-label">Experiencia (XP)</span>
+          <span id="statXpText" style="font-family:var(--font-mono); font-weight:700;">0 / 100 XP</span>
+        </div>
+        <div class="xp-bar-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="xpProgressBar" aria-valuenow="0">
+          <div id="xpBarFill" class="xp-bar-fill" style="width: 0%;"></div>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-label">Monedas</div>
+        <div class="stat-value" style="color: var(--accent-coin);">
+          <span>🪙</span>
+          <span id="statCoins">0</span>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-label">Racha Diaria</div>
+        <div class="stat-value" style="color: var(--accent-streak);">
+          <span>🔥</span>
+          <span id="statStreak">0</span>
+          <span style="font-size:0.75rem; color:var(--text-secondary);">días</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Acciones Principales y Módulo D (RF-12, RF-13, RF-14) -->
+    <div class="toolbar-actions">
+      <button type="button" id="btnNewTask" class="btn-primary">➕ Nueva Tarea</button>
+      <button type="button" id="btnExportJson" title="Descargar respaldo completo .json (RF-12)">💾 Exportar JSON</button>
+      <button type="button" id="btnImportJsonTrigger" title="Restaurar respaldo desde archivo .json (RF-13)">📂 Importar JSON</button>
+      <input type="file" id="fileImportJson" accept=".json" hidden>
+      <button type="button" id="btnExportCsv" title="Descargar reporte de productividad .csv (RF-14)">📊 Exportar CSV</button>
+      <button type="button" id="btnRunSelfTests" title="Ejecutar suite de verificación AI-DLC">🧪 Verificar (Tests)</button>
+    </div>
+  </header>
+
+  <!-- Banner de Alerta Visual (Bloqueo WIP RF-04 / Eventos de Sistema) -->
+  <div id="systemAlertBanner" class="alert-banner" role="alert" hidden>
+    <span id="systemAlertText"></span>
+    <button type="button" id="btnDismissAlert" class="icon-btn">Cerrar ✕</button>
+  </div>
+
+  <!-- Módulo A: Tablero Kanban de 4 Columnas (RF-01, RF-03, RF-04) -->
+  <main class="board-container" id="kanbanBoard" aria-label="Tablero de flujo Kanban">
+    <section class="kanban-column" data-status="backlog" aria-labelledby="col-title-backlog">
+      <div class="column-header">
+        <h2 class="column-title" id="col-title-backlog">📋 Por Hacer <span style="font-weight:400; color:var(--text-secondary); font-size:0.8rem;">(Backlog)</span></h2>
+        <span class="column-count" id="count-backlog">0</span>
+      </div>
+      <div class="task-list" id="list-backlog" data-dropzone="backlog"></div>
+    </section>
+
+    <section class="kanban-column" id="colInProgress" data-status="in_progress" aria-labelledby="col-title-in_progress">
+      <div class="column-header">
+        <div>
+          <h2 class="column-title" id="col-title-in_progress">⚡ En Proceso <span style="font-weight:400; color:var(--text-secondary); font-size:0.8rem;">(WIP)</span></h2>
+          <div class="wip-inline-control">
+            <label for="inputWipLimit">Límite WIP:</label>
+            <input type="number" id="inputWipLimit" min="1" max="20" value="3" aria-label="Límite de tareas simultáneas En Proceso">
+          </div>
+        </div>
+        <span class="column-count" id="count-in_progress">0 / 3</span>
+      </div>
+      <div class="task-list" id="list-in_progress" data-dropzone="in_progress"></div>
+    </section>
+
+    <section class="kanban-column" data-status="review" aria-labelledby="col-title-review">
+      <div class="column-header">
+        <h2 class="column-title" id="col-title-review">🔍 En Revisión <span style="font-weight:400; color:var(--text-secondary); font-size:0.8rem;">(Review)</span></h2>
+        <span class="column-count" id="count-review">0</span>
+      </div>
+      <div class="task-list" id="list-review" data-dropzone="review"></div>
+    </section>
+
+    <section class="kanban-column" data-status="done" aria-labelledby="col-title-done">
+      <div class="column-header">
+        <h2 class="column-title" id="col-title-done">✅ Completado <span style="font-weight:400; color:var(--text-secondary); font-size:0.8rem;">(Done)</span></h2>
+        <span class="column-count" id="count-done">0</span>
+      </div>
+      <div class="task-list" id="list-done" data-dropzone="done"></div>
+    </section>
+  </main>
+
+  <!-- Modal Nativo: Creación y Edición de Tareas (RF-02) -->
+  <dialog id="modalTaskForm" aria-labelledby="modalTaskTitle">
+    <form id="taskForm" method="dialog" novalidate>
+      <div class="modal-header">
+        <h3 id="modalTaskTitle">Nueva Tarea</h3>
+        <button type="button" id="btnCloseTaskModal" class="icon-btn" aria-label="Cerrar modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="taskFieldId">
+        <div class="form-grid">
+          <div class="form-field full-width">
+            <label for="taskFieldTitle">Título de la tarea (máx. 80 caracteres) *</label>
+            <input type="text" id="taskFieldTitle" maxlength="80" required placeholder="Ej. Documentar lineamientos de seguridad">
+            <small id="titleCharCounter" style="color:var(--text-muted); font-size:0.75rem;">0 / 80 caracteres</small>
+          </div>
+
+          <div class="form-field">
+            <label for="taskFieldCategory">Categoría *</label>
+            <select id="taskFieldCategory" required>
+              <option value="Operación">Operación</option>
+              <option value="Cliente">Cliente</option>
+              <option value="Calidad/Norma">Calidad/Norma</option>
+              <option value="Administración">Administración</option>
+            </select>
+          </div>
+
+          <div class="form-field">
+            <label for="taskFieldPriority">Prioridad *</label>
+            <select id="taskFieldPriority" required>
+              <option value="Baja">Baja (+0 XP)</option>
+              <option value="Media">Media (+5 XP)</option>
+              <option value="Alta">Alta (+10 XP)</option>
+              <option value="Urgente">Urgente (+20 XP)</option>
+            </select>
+          </div>
+
+          <div class="form-field">
+            <label for="taskFieldEffort">Estimación de esfuerzo *</label>
+            <select id="taskFieldEffort" required>
+              <option value="1">1 pt (Rápida — 10 XP / 5 Monedas)</option>
+              <option value="2">2 pts (Media — 20 XP / 10 Monedas)</option>
+              <option value="3">3 pts (Compleja — 30 XP / 15 Monedas)</option>
+            </select>
+          </div>
+
+          <div class="form-field">
+            <label for="taskFieldDeadline">Fecha límite (Deadline YYYY-MM-DD) *</label>
+            <input type="date" id="taskFieldDeadline" required>
+          </div>
+        </div>
+        <p id="taskFormError" style="color:var(--accent-danger); font-size:0.84rem; margin-top:0.75rem;" hidden></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btnCancelTaskModal">Cancelar</button>
+        <button type="submit" class="btn-primary" id="btnSaveTask">Guardar Tarea</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Modal Nativo: Catálogo y Tienda de los 15 Sprites Modulares (RF-09) -->
+  <dialog id="modalBuddyShop" aria-labelledby="modalShopTitle">
+    <div class="modal-header">
+      <h3 id="modalShopTitle">🎨 Armario y Tienda Modular del Buddy (15 Sprites SVG)</h3>
+      <button type="button" id="btnCloseShopModal" class="icon-btn" aria-label="Cerrar tienda">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; padding-bottom:0.75rem; border-bottom:1px solid var(--border-subtle);">
+        <span style="font-size:0.86rem; color:var(--text-secondary);">Personaliza las 5 capas superpuestas (Base, Ropa, Cabeza, Mano, Aura).</span>
+        <span style="font-family:var(--font-mono); font-weight:700; color:var(--accent-coin);" id="shopModalBalance">🪙 0 Monedas | NVL 1</span>
+      </div>
+      <div id="catalogContainer" class="catalog-grid"></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" id="btnDoneShopModal" class="btn-primary">Listo</button>
+    </div>
+  </dialog>
+
+  <!-- Modal Nativo: Diagnóstico y Suite de Pruebas Automatizadas In-Browser -->
+  <dialog id="modalSelfTests" aria-labelledby="modalTestsTitle">
+    <div class="modal-header">
+      <h3 id="modalTestsTitle">🧪 Suite de Verificación Automatizada (AI-DLC)</h3>
+      <button type="button" id="btnCloseTestsModal" class="icon-btn" aria-label="Cerrar pruebas">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="selfTestSummary" style="font-family:var(--font-mono); font-weight:700; margin-bottom:0.75rem;"></div>
+      <pre id="selfTestOutput" style="background:var(--bg-elevated); padding:0.85rem; border-radius:var(--radius-sm); border:1px solid var(--border-subtle); font-family:var(--font-mono); font-size:0.78rem; white-space:pre-wrap;"></pre>
+    </div>
+    <div class="modal-footer">
+      <button type="button" id="btnCloseTestsFooter" class="btn-primary">Cerrar</button>
+    </div>
+  </dialog>
+
+  <script>
+    /**
+     * ============================================================================
+     * TABLERO KANBAN GAMIFICADO OFFLINE — ARQUITECTURA LIMPIA + DDD + MVI STORE
+     * ============================================================================
+     * Bounded Contexts:
+     *  1. KanbanContext       (RF-01, RF-02, RF-03, RF-04)
+     *  2. GamificationContext (RF-05, RF-06, RF-07)
+     *  3. BuddyContext        (RF-08, RF-09, RF-10)
+     *  4. PersistenceContext  (RF-11, RF-12, RF-13, RF-14)
+     * ============================================================================
+     */
+    (function (root) {
+      'use strict';
+
+      const STORAGE_KEY = 'kanban_gamified_v1';
+      const SCHEMA_VERSION = '1.0.0';
+
+      const COLUMNS = ['backlog', 'in_progress', 'review', 'done'];
+      const CATEGORIES = ['Operación', 'Cliente', 'Calidad/Norma', 'Administración'];
+      const PRIORITIES = ['Baja', 'Media', 'Alta', 'Urgente'];
+      const EFFORTS = [1, 2, 3];
+
+      const PRIORITY_XP_BONUS = {
+        Urgente: 20,
+        Alta: 10,
+        Media: 5,
+        Baja: 0
+      };
+
+      // ==========================================================================
+      // BOUNDED CONTEXT 3: BUDDY PIXEL ART (16x16 SVG) & CATÁLOGO DE 15 SPRITES
+      // ==========================================================================
+      const SPRITE_CATALOG = [
+        // Capa 0: Base (1)
+        {
+          id: 'base_dev',
+          name: 'Avatar Base Pixel',
+          layer: 'base',
+          layerIndex: 0,
+          unlockType: 'starter',
+          cost: 0,
+          minLevel: 1,
+          description: 'Anatomía pixel art 16x16 de alta nitidez.',
+          rects: [
+            // Piel rostro y cuello
+            { x: 5, y: 4, w: 6, h: 6, fill: '#f5cfa0' },
+            { x: 6, y: 10, w: 4, h: 1, fill: '#e2b483' },
+            // Orejas
+            { x: 4, y: 6, w: 1, h: 2, fill: '#e2b483' },
+            { x: 11, y: 6, w: 1, h: 2, fill: '#e2b483' },
+            // Ojos y sonrisa
+            { x: 6, y: 6, w: 1, h: 2, fill: '#0f172a' },
+            { x: 9, y: 6, w: 1, h: 2, fill: '#0f172a' },
+            { x: 6, y: 5, w: 1, h: 1, fill: '#ffffff' },
+            { x: 9, y: 5, w: 1, h: 1, fill: '#ffffff' },
+            { x: 7, y: 9, w: 2, h: 1, fill: '#be7c5c' },
+            // Piernas y calzado base
+            { x: 5, y: 14, w: 2, h: 2, fill: '#1e293b' },
+            { x: 9, y: 14, w: 2, h: 2, fill: '#1e293b' }
+          ]
+        },
+
+        // Capa 1: Ropa / Body (4)
+        {
+          id: 'body_hoodie',
+          name: 'Hoodie Dev Oscuro',
+          layer: 'body',
+          layerIndex: 1,
+          unlockType: 'starter',
+          cost: 0,
+          minLevel: 1,
+          description: 'Sudadera clásica para sesiones intensas.',
+          rects: [
+            { x: 4, y: 11, w: 8, h: 3, fill: '#3b82f6' },
+            { x: 5, y: 11, w: 6, h: 3, fill: '#2563eb' },
+            { x: 6, y: 11, w: 1, h: 2, fill: '#e2e8f0' },
+            { x: 9, y: 11, w: 1, h: 2, fill: '#e2e8f0' }
+          ]
+        },
+        {
+          id: 'body_suit',
+          name: 'Traje Ejecutivo',
+          layer: 'body',
+          layerIndex: 1,
+          unlockType: 'shop',
+          cost: 40,
+          minLevel: 2,
+          description: 'Saco formal con corbata carmesí.',
+          rects: [
+            { x: 4, y: 11, w: 8, h: 3, fill: '#1e293b' },
+            { x: 7, y: 11, w: 2, h: 3, fill: '#f8fafc' },
+            { x: 7, y: 11, w: 1, h: 3, fill: '#ef4444' }
+          ]
+        },
+        {
+          id: 'body_cyber',
+          name: 'Chaqueta Cyber',
+          layer: 'body',
+          layerIndex: 1,
+          unlockType: 'shop',
+          cost: 85,
+          minLevel: 3,
+          description: 'Chaqueta sintética con bordes neón.',
+          rects: [
+            { x: 4, y: 11, w: 8, h: 3, fill: '#581c87' },
+            { x: 4, y: 11, w: 1, h: 3, fill: '#22d3ee' },
+            { x: 11, y: 11, w: 1, h: 3, fill: '#22d3ee' },
+            { x: 6, y: 12, w: 4, h: 2, fill: '#f43f5e' }
+          ]
+        },
+        {
+          id: 'body_armor',
+          name: 'Armadura Ágil',
+          layer: 'body',
+          layerIndex: 1,
+          unlockType: 'achievement',
+          cost: 0,
+          minLevel: 4,
+          achievementRule: 'Completar al menos 5 tareas en el tablero',
+          checkUnlock: (state) => state.tasks.filter(t => t.status === 'done').length >= 5,
+          description: 'Peto de platino para maestros del flujo.',
+          rects: [
+            { x: 4, y: 11, w: 8, h: 3, fill: '#94a3b8' },
+            { x: 5, y: 11, w: 6, h: 2, fill: '#e2e8f0' },
+            { x: 7, y: 12, w: 2, h: 1, fill: '#facc15' }
+          ]
+        },
+
+        // Capa 2: Cabeza / Head (4)
+        {
+          id: 'head_headphones',
+          name: 'Audífonos Lo-Fi',
+          layer: 'head',
+          layerIndex: 2,
+          unlockType: 'starter',
+          cost: 0,
+          minLevel: 1,
+          description: 'Aislamiento acústico de alta concentración.',
+          rects: [
+            { x: 5, y: 3, w: 6, h: 2, fill: '#475569' },
+            { x: 4, y: 2, w: 8, h: 1, fill: '#38bdf8' },
+            { x: 3, y: 5, w: 2, h: 3, fill: '#0284c7' },
+            { x: 11, y: 5, w: 2, h: 3, fill: '#0284c7' }
+          ]
+        },
+        {
+          id: 'head_cap',
+          name: 'Gorra Pixel',
+          layer: 'head',
+          layerIndex: 2,
+          unlockType: 'shop',
+          cost: 25,
+          minLevel: 1,
+          description: 'Gorra deportiva con visera frontal.',
+          rects: [
+            { x: 5, y: 2, w: 6, h: 2, fill: '#ef4444' },
+            { x: 4, y: 4, w: 9, h: 1, fill: '#b91c1c' },
+            { x: 7, y: 2, w: 2, h: 1, fill: '#fef08a' }
+          ]
+        },
+        {
+          id: 'head_visor',
+          name: 'Visor Láser',
+          layer: 'head',
+          layerIndex: 2,
+          unlockType: 'shop',
+          cost: 75,
+          minLevel: 3,
+          description: 'HUD táctico para detectar bloqueos.',
+          rects: [
+            { x: 5, y: 3, w: 6, h: 1, fill: '#1e293b' },
+            { x: 4, y: 6, w: 8, h: 2, fill: '#10b981' },
+            { x: 5, y: 6, w: 3, h: 1, fill: '#a7f3d0' }
+          ]
+        },
+        {
+          id: 'head_crown',
+          name: 'Corona Kanban',
+          layer: 'head',
+          layerIndex: 2,
+          unlockType: 'achievement',
+          cost: 0,
+          minLevel: 4,
+          achievementRule: 'Alcanzar una racha de 3 o más días consecutivos',
+          checkUnlock: (state) => (state.user && state.user.streakDays >= 3),
+          description: 'Recompensa real a la constancia diaria.',
+          rects: [
+            { x: 5, y: 1, w: 1, h: 3, fill: '#facc15' },
+            { x: 7, y: 1, w: 2, h: 3, fill: '#facc15' },
+            { x: 10, y: 1, w: 1, h: 3, fill: '#facc15' },
+            { x: 5, y: 3, w: 6, h: 1, fill: '#eab308' },
+            { x: 7, y: 2, w: 2, h: 1, fill: '#ef4444' }
+          ]
+        },
+
+        // Capa 3: Mano / Hand (3)
+        {
+          id: 'hand_coffee',
+          name: 'Taza de Café Espresso',
+          layer: 'hand',
+          layerIndex: 3,
+          unlockType: 'starter',
+          cost: 0,
+          minLevel: 1,
+          description: 'Combustible matutino para cerrar tareas.',
+          rects: [
+            { x: 12, y: 10, w: 3, h: 3, fill: '#f8fafc' },
+            { x: 15, y: 11, w: 1, h: 1, fill: '#cbd5e1' },
+            { x: 12, y: 10, w: 3, h: 1, fill: '#78350f' },
+            { x: 13, y: 8, w: 1, h: 1, fill: '#94a3b8' }
+          ]
+        },
+        {
+          id: 'hand_laptop',
+          name: 'Laptop Ultraligera',
+          layer: 'hand',
+          layerIndex: 3,
+          unlockType: 'shop',
+          cost: 50,
+          minLevel: 2,
+          description: 'Terminal portátil lista para producción.',
+          rects: [
+            { x: 1, y: 9, w: 3, h: 3, fill: '#94a3b8' },
+            { x: 2, y: 10, w: 1, h: 1, fill: '#38bdf8' },
+            { x: 0, y: 12, w: 4, h: 1, fill: '#475569' }
+          ]
+        },
+        {
+          id: 'hand_potion',
+          name: 'Elixir de Enfoque',
+          layer: 'hand',
+          layerIndex: 3,
+          unlockType: 'achievement',
+          cost: 0,
+          minLevel: 2,
+          achievementRule: 'Completar una tarea de prioridad Urgente',
+          checkUnlock: (state) => state.tasks.some(t => t.status === 'done' && t.priority === 'Urgente'),
+          description: 'Poción alquímica ganada bajo presión.',
+          rects: [
+            { x: 13, y: 9, w: 1, h: 1, fill: '#fde047' },
+            { x: 12, y: 10, w: 3, h: 3, fill: '#a855f7' },
+            { x: 13, y: 11, w: 1, h: 1, fill: '#e9d5ff' }
+          ]
+        },
+
+        // Capa 4: Aura / Effect (3)
+        {
+          id: 'aura_sparkles',
+          name: 'Destellos Dorados',
+          layer: 'aura',
+          layerIndex: 4,
+          unlockType: 'starter',
+          cost: 0,
+          minLevel: 1,
+          description: 'Partículas luminosas de inspiración.',
+          rects: [
+            { x: 1, y: 2, w: 1, h: 1, fill: '#facc15' },
+            { x: 14, y: 3, w: 1, h: 1, fill: '#facc15' },
+            { x: 2, y: 14, w: 1, h: 1, fill: '#fde047' },
+            { x: 14, y: 13, w: 1, h: 1, fill: '#fde047' }
+          ]
+        },
+        {
+          id: 'aura_fire',
+          name: 'Llama de Productividad',
+          layer: 'aura',
+          layerIndex: 4,
+          unlockType: 'shop',
+          cost: 90,
+          minLevel: 3,
+          description: 'Energía ígnea alrededor del avatar.',
+          rects: [
+            { x: 1, y: 5, w: 1, h: 3, fill: '#f97316' },
+            { x: 1, y: 6, w: 1, h: 2, fill: '#facc15' },
+            { x: 14, y: 5, w: 1, h: 3, fill: '#f97316' },
+            { x: 14, y: 6, w: 1, h: 2, fill: '#facc15' }
+          ]
+        },
+        {
+          id: 'aura_matrix',
+          name: 'Halo Binario',
+          layer: 'aura',
+          layerIndex: 4,
+          unlockType: 'achievement',
+          cost: 0,
+          minLevel: 5,
+          achievementRule: 'Acumular 400 o más puntos de XP totales',
+          checkUnlock: (state) => (state.user && state.user.xp >= 400),
+          description: ' Flujo de datos esmeralda de alto nivel.',
+          rects: [
+            { x: 0, y: 1, w: 1, h: 4, fill: '#4ade80' },
+            { x: 2, y: 0, w: 1, h: 3, fill: '#22c55e' },
+            { x: 13, y: 0, w: 1, h: 3, fill: '#22c55e' },
+            { x: 15, y: 2, w: 1, h: 4, fill: '#4ade80' }
+          ]
+        }
+      ];
+
+      // Sprite reactivo de estrés (RF-10: cuando hay tareas vencidas en En Proceso)
+      const STRESS_SPRITE_RECTS = [
+        // Gota de sudor azul y alerta roja
+        { x: 12, y: 4, w: 1, h: 2, fill: '#38bdf8' },
+        { x: 11, y: 5, w: 2, h: 2, fill: '#0284c7' },
+        { x: 1, y: 1, w: 1, h: 3, fill: '#ef4444' },
+        { x: 1, y: 5, w: 1, h: 1, fill: '#ef4444' },
+        // Boca tensa
+        { x: 6, y: 9, w: 4, h: 1, fill: '#ef4444' }
+      ];
+
+      // ==========================================================================
+      // UTILIDADES DE FECHA Y GENERACIÓN DE ID (Funciones Puras)
+      // ==========================================================================
+      function formatDateYMD(dateInput) {
+        if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
+          return dateInput;
+        }
+        const d = dateInput ? new Date(dateInput) : new Date();
+        const year = d.getUTCFullYear();
+        const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+
+      function generateTaskId() {
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+          return 'tsk_' + crypto.randomUUID().slice(0, 8);
+        }
+        return 'tsk_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      }
+
+      // ==========================================================================
+      // BOUNDED CONTEXT 2: GAMIFICATION ENGINE (RF-05, RF-06, RF-07)
+      // ==========================================================================
+      const GamificationContext = {
+        /**
+         * RF-06: XPRequeridaParaNivelN = 100 * (N ^ 1.2)
+         */
+        xpRequiredForLevelStep(levelN) {
+          const n = Math.max(1, Number(levelN) || 1);
+          return Math.round(100 * Math.pow(n, 1.2));
+        },
+
+        /**
+         * Determina el nivel actual a partir del XP acumulado siguiendo 100 * N^1.2.
+         * Con N=1 -> umbral 100 XP (sube a Nivel 2).
+         * Con N=2 -> umbral 230 XP (sube a Nivel 3, p.ej. 350 XP === Nivel 3 como en SRS p.5).
+         * Con N=3 -> umbral 374 XP (sube a Nivel 4).
+         */
+        calculateLevelFromXp(xp) {
+          const safeXp = Math.max(0, Number(xp) || 0);
+          let level = 1;
+          while (safeXp >= this.xpRequiredForLevelStep(level)) {
+            level += 1;
+            if (level > 999) break;
+          }
+          return level;
+        },
+
+        /**
+         * RF-05: Cálculo de XP y Monedas al mover una tarjeta a Completado.
+         * XPBase = PuntosDeEsfuerzo * 10
+         * MonedasBase = PuntosDeEsfuerzo * 5
+         * Bono puntualidad (fechaActual <= deadline): +15 XP y +10 Monedas
+         * Bono prioridad: Urgente (+20 XP), Alta (+10 XP), Media (+5 XP), Baja (0 XP)
+         */
+        calculateTaskReward(task, completionDateISO) {
+          const effort = Number(task.effort) || 1;
+          const xpBase = effort * 10;
+          const coinsBase = effort * 5;
+
+          const currentYMD = formatDateYMD(completionDateISO);
+          const isOnTime = Boolean(task.deadline && currentYMD <= task.deadline);
+
+          const punctualityXp = isOnTime ? 15 : 0;
+          const punctualityCoins = isOnTime ? 10 : 0;
+          const priorityXp = PRIORITY_XP_BONUS[task.priority] !== undefined
+            ? PRIORITY_XP_BONUS[task.priority]
+            : 0;
+
+          return {
+            xpBase,
+            coinsBase,
+            punctualityXp,
+            punctualityCoins,
+            priorityXp,
+            isOnTime,
+            totalXp: xpBase + punctualityXp + priorityXp,
+            totalCoins: coinsBase + punctualityCoins
+          };
+        },
+
+        /**
+         * RF-07: Control de Rachas.
+         * - Si transcurren más de 48 horas sin cerrar tareas, la racha se reinicia a 0.
+         * - Si se completa al menos una tarea en días naturales consecutivos, incrementa en +1.
+         */
+        evaluateStreakOnInactivity(userState, nowISO) {
+          if (!userState || !userState.lastActiveDate) {
+            return { streakDays: 0, lastActiveDate: null };
+          }
+          const lastMs = Date.parse(userState.lastActiveDate.length === 10
+            ? userState.lastActiveDate + 'T23:59:59.000Z'
+            : userState.lastActiveDate);
+          const nowMs = Date.parse(nowISO.length === 10
+            ? nowISO + 'T00:00:00.000Z'
+            : nowISO);
+
+          if (Number.isNaN(lastMs) || Number.isNaN(nowMs)) {
+            return { ...userState };
+          }
+          const hoursElapsed = (nowMs - lastMs) / (1000 * 60 * 60);
+          if (hoursElapsed > 48) {
+            return {
+              ...userState,
+              streakDays: 0
+            };
+          }
+          return { ...userState };
+        },
+
+        updateStreakOnTaskCompletion(userState, completionDateISO) {
+          const todayYMD = formatDateYMD(completionDateISO);
+          const prevYMD = userState.lastActiveDate ? formatDateYMD(userState.lastActiveDate) : null;
+
+          if (!prevYMD) {
+            return {
+              streakDays: 1,
+              lastActiveDate: todayYMD
+            };
+          }
+
+          const prevDateUTC = Date.UTC(
+            Number(prevYMD.slice(0, 4)),
+            Number(prevYMD.slice(5, 7)) - 1,
+            Number(prevYMD.slice(8, 10))
+          );
+          const todayDateUTC = Date.UTC(
+            Number(todayYMD.slice(0, 4)),
+            Number(todayYMD.slice(5, 7)) - 1,
+            Number(todayYMD.slice(8, 10))
+          );
+
+          const diffDays = Math.round((todayDateUTC - prevDateUTC) / (1000 * 60 * 60 * 24));
+          const diffHours = (todayDateUTC - prevDateUTC) / (1000 * 60 * 60);
+
+          if (diffDays === 0) {
+            return {
+              streakDays: Math.max(1, Number(userState.streakDays) || 0),
+              lastActiveDate: todayYMD
+            };
+          }
+          if (diffDays === 1) {
+            return {
+              streakDays: (Number(userState.streakDays) || 0) + 1,
+              lastActiveDate: todayYMD
+            };
+          }
+          if (diffHours > 48 || diffDays > 2 || diffDays < 0) {
+            // Reinicia a 0 por >48h de inactividad, o inicia nueva racha en 0/1 según evento
+            return {
+              streakDays: 0,
+              lastActiveDate: todayYMD
+            };
+          }
+          return {
+            streakDays: 0,
+            lastActiveDate: todayYMD
+          };
+        }
+      };
+
+      // ==========================================================================
+      // BOUNDED CONTEXT 1: KANBAN BOARD & FLOW CONTROL (RF-01, RF-02, RF-03, RF-04)
+      // ==========================================================================
+      const KanbanContext = {
+        validateTaskPayload(payload) {
+          const errors = [];
+          const title = typeof payload.title === 'string' ? payload.title.trim() : '';
+          if (!title) {
+            errors.push('El título de la tarea es obligatorio.');
+          } else if (title.length > 80) {
+            errors.push('El título no puede exceder los 80 caracteres (RF-02).');
+          }
+
+          if (!CATEGORIES.includes(payload.category)) {
+            errors.push('Categoría inválida. Debe ser Operación, Cliente, Calidad/Norma o Administración.');
+          }
+
+          if (!PRIORITIES.includes(payload.priority)) {
+            errors.push('Prioridad inválida. Debe ser Baja, Media, Alta o Urgente.');
+          }
+
+          const effort = Number(payload.effort);
+          if (!EFFORTS.includes(effort)) {
+            errors.push('Estimación de esfuerzo inválida. Debe ser 1, 2 o 3 pts.');
+          }
+
+          if (typeof payload.deadline !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(payload.deadline)) {
+            errors.push('La fecha límite (Deadline) debe tener formato YYYY-MM-DD.');
+          }
+
+          return {
+            valid: errors.length === 0,
+            errors,
+            sanitized: {
+              title,
+              category: payload.category,
+              priority: payload.priority,
+              effort,
+              deadline: payload.deadline
+            }
+          };
+        },
+
+        canMoveToStatus(state, taskId, targetStatus) {
+          if (!COLUMNS.includes(targetStatus)) {
+            return { allowed: false, reason: 'Columna de destino inválida.' };
+          }
+          const task = state.tasks.find(t => t.id === taskId);
+          if (!task) {
+            return { allowed: false, reason: 'La tarea no existe.' };
+          }
+          if (task.status === targetStatus) {
+            return { allowed: true, noOp: true };
+          }
+          if (targetStatus === 'in_progress') {
+            const wipLimit = Math.max(1, Number(state.settings && state.settings.wipLimit) || 3);
+            const currentInProgress = state.tasks.filter(
+              t => t.status === 'in_progress' && t.id !== taskId
+            ).length;
+            if (currentInProgress >= wipLimit) {
+              return {
+                allowed: false,
+                wipBlocked: true,
+                reason: `Bloqueo WIP (RF-04): La columna "En Proceso" alcanzó su límite máximo de ${wipLimit} tareas simultáneas.`
+              };
+            }
+          }
+          return { allowed: true };
+        }
+      };
+
+      // ==========================================================================
+      // BOUNDED CONTEXT 3 (MÉTODOS): BUDDY CONTEXT (RF-08, RF-09, RF-10)
+      // ==========================================================================
+      const BuddyContext = {
+        getCatalog() {
+          return SPRITE_CATALOG;
+        },
+
+        /**
+         * RF-10: Activación de sprite de estrés si existen tareas vencidas en En Proceso.
+         */
+        hasOverdueTasksInProgress(state, currentDateISO) {
+          const todayYMD = formatDateYMD(currentDateISO);
+          return state.tasks.some(
+            t => t.status === 'in_progress' && t.deadline && t.deadline < todayYMD
+          );
+        },
+
+        /**
+         * RF-09: Clasifica los 15 sprites en:
+         * - 'unlocked_equipped' (Desbloqueado/Equipado)
+         * - 'available_for_purchase' (Disponible para compra)
+         * - 'locked_by_achievement' (Bloqueado por logro)
+         */
+        classifyCatalogForState(state) {
+          const inventory = (state.buddy && Array.isArray(state.buddy.inventory))
+            ? state.buddy.inventory
+            : [];
+          const equipped = (state.buddy && state.buddy.equipped) || {};
+
+          return SPRITE_CATALOG.map(sprite => {
+            const isOwned = inventory.includes(sprite.id);
+            const isEquipped = sprite.layer === 'base'
+              ? true
+              : equipped[sprite.layer] === sprite.id;
+
+            let category = 'available_for_purchase';
+            if (isOwned) {
+              category = 'unlocked_equipped';
+            } else if (sprite.unlockType === 'achievement') {
+              category = 'locked_by_achievement';
+            }
+
+            const meetsLevel = state.user.level >= sprite.minLevel;
+            const meetsCoins = state.user.coins >= sprite.cost;
+            const canBuy = category === 'available_for_purchase' && meetsLevel && meetsCoins;
+
+            return {
+              ...sprite,
+              isOwned,
+              isEquipped,
+              category,
+              meetsLevel,
+              meetsCoins,
+              canBuy
+            };
+          });
+        },
+
+        unlockEarnedAchievements(state) {
+          const inventory = new Set(state.buddy.inventory || []);
+          const newlyUnlocked = [];
+
+          for (const sprite of SPRITE_CATALOG) {
+            if (sprite.unlockType === 'achievement' && !inventory.has(sprite.id)) {
+              if (typeof sprite.checkUnlock === 'function' && sprite.checkUnlock(state)) {
+                inventory.add(sprite.id);
+                newlyUnlocked.push(sprite);
+              }
+            }
+          }
+
+          return {
+            inventory: Array.from(inventory),
+            newlyUnlocked
+          };
+        }
+      };
+
+      // ==========================================================================
+      // BOUNDED CONTEXT 4: PERSISTENCE, JSON SCHEMA VALIDATION & CSV (RF-11..RF-14)
+      // ==========================================================================
+      const PersistenceContext = {
+        createInitialState(nowISO) {
+          const iso = nowISO || new Date().toISOString();
+          const today = formatDateYMD(iso);
+          return {
+            version: SCHEMA_VERSION,
+            lastUpdated: iso,
+            user: {
+              xp: 350,
+              level: 3,
+              coins: 120,
+              streakDays: 4,
+              lastActiveDate: today
+            },
+            buddy: {
+              equipped: {
+                head: 'head_headphones',
+                body: 'body_hoodie',
+                hand: 'hand_coffee',
+                aura: 'aura_sparkles'
+              },
+              inventory: [
+                'base_dev',
+                'body_hoodie',
+                'head_headphones',
+                'hand_coffee',
+                'aura_sparkles'
+              ]
+            },
+            settings: {
+              wipLimit: 3
+            },
+            tasks: [
+              {
+                id: 'tsk_8f12a',
+                title: 'Documentar lineamientos de seguridad',
+                category: 'Calidad/Norma',
+                priority: 'Alta',
+                effort: 2,
+                status: 'in_progress',
+                deadline: '2026-10-25',
+                createdAt: '2026-10-22T14:30:00.000Z',
+                completedAt: null
+              }
+            ]
+          };
+        },
+
+        /**
+         * RF-13: Validación estricta de esquema JSON para prevenir estados corruptos
+         * antes de sobreescribir la memoria.
+         */
+        validateStateSchema(candidate) {
+          const errors = [];
+          if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+            return { valid: false, errors: ['El archivo JSON raíz debe ser un objeto válido.'] };
+          }
+
+          if (typeof candidate.version !== 'string' || !candidate.version.trim()) {
+            errors.push('Falta el atributo obligatorio "version" (string).');
+          }
+          if (typeof candidate.lastUpdated !== 'string') {
+            errors.push('Falta el atributo obligatorio "lastUpdated" (ISO string).');
+          }
+
+          // Validar user
+          const u = candidate.user;
+          if (!u || typeof u !== 'object') {
+            errors.push('Falta el objeto obligatorio "user".');
+          } else {
+            if (typeof u.xp !== 'number' || u.xp < 0 || Number.isNaN(u.xp)) errors.push('user.xp inválido.');
+            if (typeof u.level !== 'number' || u.level < 1 || Number.isNaN(u.level)) errors.push('user.level inválido.');
+            if (typeof u.coins !== 'number' || u.coins < 0 || Number.isNaN(u.coins)) errors.push('user.coins inválido.');
+            if (typeof u.streakDays !== 'number' || u.streakDays < 0 || Number.isNaN(u.streakDays)) errors.push('user.streakDays inválido.');
+            if (u.lastActiveDate !== null && typeof u.lastActiveDate !== 'string') errors.push('user.lastActiveDate inválido.');
+          }
+
+          // Validar buddy
+          const b = candidate.buddy;
+          if (!b || typeof b !== 'object') {
+            errors.push('Falta el objeto obligatorio "buddy".');
+          } else {
+            if (!b.equipped || typeof b.equipped !== 'object') {
+              errors.push('Falta buddy.equipped.');
+            } else {
+              for (const layerKey of ['head', 'body', 'hand', 'aura']) {
+                if (typeof b.equipped[layerKey] !== 'string') {
+                  errors.push(`Falta buddy.equipped.${layerKey}.`);
+                }
+              }
+            }
+            if (!Array.isArray(b.inventory) || b.inventory.some(item => typeof item !== 'string')) {
+              errors.push('buddy.inventory debe ser un arreglo de strings.');
+            }
+          }
+
+          // Validar settings
+          const s = candidate.settings;
+          if (!s || typeof s !== 'object' || typeof s.wipLimit !== 'number' || s.wipLimit < 1) {
+            errors.push('settings.wipLimit debe ser un número mayor o igual a 1.');
+          }
+
+          // Validar tasks
+          if (!Array.isArray(candidate.tasks)) {
+            errors.push('El atributo "tasks" debe ser un arreglo.');
+          } else {
+            candidate.tasks.forEach((t, idx) => {
+              if (!t || typeof t !== 'object') {
+                errors.push(`Tarea en índice ${idx} no es un objeto.`);
+                return;
+              }
+              if (typeof t.id !== 'string' || !t.id.trim()) errors.push(`Tarea[${idx}].id inválido.`);
+              if (typeof t.title !== 'string' || !t.title.trim() || t.title.length > 80) {
+                errors.push(`Tarea[${idx}].title inválido (1..80 caracteres).`);
+              }
+              if (!CATEGORIES.includes(t.category)) errors.push(`Tarea[${idx}].category inválida.`);
+              if (!PRIORITIES.includes(t.priority)) errors.push(`Tarea[${idx}].priority inválida.`);
+              if (!EFFORTS.includes(Number(t.effort))) errors.push(`Tarea[${idx}].effort inválido.`);
+              if (!COLUMNS.includes(t.status)) errors.push(`Tarea[${idx}].status inválido.`);
+              if (typeof t.deadline !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(t.deadline)) {
+                errors.push(`Tarea[${idx}].deadline debe ser YYYY-MM-DD.`);
+              }
+            });
+          }
+
+          return {
+            valid: errors.length === 0,
+            errors
+          };
+        },
+
+        /**
+         * RF-14 (Exportación CSV):
+         * Columnas exactas: ID, Título, Categoría, Prioridad, Fecha_Terminación, XP_Generado
+         */
+        generateProductivityCsv(state) {
+          const headers = ['ID', 'Título', 'Categoría', 'Prioridad', 'Fecha_Terminación', 'XP_Generado'];
+          const escapeCsvCell = (val) => {
+            const str = val === null || val === undefined ? '' : String(val);
+            if (/[",\n\r]/.test(str)) {
+              return '"' + str.replace(/"/g, '""') + '"';
+            }
+            return str;
+          };
+
+          const rows = [headers.join(',')];
+          for (const task of state.tasks) {
+            let xpGen = 0;
+            if (typeof task.xpGenerated === 'number') {
+              xpGen = task.xpGenerated;
+            } else if (task.status === 'done') {
+              xpGen = GamificationContext.calculateTaskReward(
+                task,
+                task.completedAt || state.lastUpdated
+              ).totalXp;
+            }
+            const row = [
+              escapeCsvCell(task.id),
+              escapeCsvCell(task.title),
+              escapeCsvCell(task.category),
+              escapeCsvCell(task.priority),
+              escapeCsvCell(task.completedAt || ''),
+              escapeCsvCell(xpGen)
+            ];
+            rows.push(row.join(','));
+          }
+          return rows.join('\n');
+        }
+      };
+
+      // ==========================================================================
+      // CAPA DE APLICACIÓN: MVI / STORE UNIDIRECCIONAL (State -> Render -> Event)
+      // ==========================================================================
+      function createAppStore(storageAdapter) {
+        let state = null;
+        const listeners = [];
+
+        function persistSync(nextState) {
+          if (storageAdapter && typeof storageAdapter.setItem === 'function') {
+            storageAdapter.setItem(STORAGE_KEY, JSON.stringify(nextState));
+          }
+        }
+
+        function loadInitialState(nowISO) {
+          const currentISO = nowISO || new Date().toISOString();
+          if (storageAdapter && typeof storageAdapter.getItem === 'function') {
+            const raw = storageAdapter.getItem(STORAGE_KEY);
+            if (raw) {
+              try {
+                const parsed = JSON.parse(raw);
+                const validation = PersistenceContext.validateStateSchema(parsed);
+                if (validation.valid) {
+                  // Verificar inactividad >48h al iniciar (RF-07)
+                  const updatedUser = GamificationContext.evaluateStreakOnInactivity(parsed.user, currentISO);
+                  state = {
+                    ...parsed,
+                    user: updatedUser
+                  };
+                  persistSync(state);
+                  return state;
+                }
+              } catch (_e) {
+                // Si hay corrupción previa en localStorage, se repara con el estado semilla
+              }
+            }
+          }
+          state = PersistenceContext.createInitialState(currentISO);
+          persistSync(state);
+          return state;
+        }
+
+        function getState() {
+          return JSON.parse(JSON.stringify(state));
+        }
+
+        function subscribe(fn) {
+          listeners.push(fn);
+        }
+
+        function notify(meta) {
+          const snapshot = getState();
+          for (const fn of listeners) {
+            fn(snapshot, meta || {});
+          }
+        }
+
+        function dispatch(action) {
+          const nowISO = action.nowISO || new Date().toISOString();
+          let meta = { type: action.type, success: true };
+
+          if (action.type === 'CREATE_TASK') {
+            const check = KanbanContext.validateTaskPayload(action.payload || {});
+            if (!check.valid) {
+              return { success: false, errors: check.errors };
+            }
+            const newTask = {
+              id: action.payload.id || generateTaskId(),
+              title: check.sanitized.title,
+              category: check.sanitized.category,
+              priority: check.sanitized.priority,
+              effort: check.sanitized.effort,
+              status: 'backlog',
+              deadline: check.sanitized.deadline,
+              createdAt: nowISO,
+              completedAt: null
+            };
+            state = {
+              ...state,
+              lastUpdated: nowISO,
+              tasks: [...state.tasks, newTask]
+            };
+            persistSync(state);
+            notify(meta);
+            return { success: true, task: newTask };
+          }
+
+          if (action.type === 'UPDATE_TASK') {
+            const idx = state.tasks.findIndex(t => t.id === action.id);
+            if (idx === -1) {
+              return { success: false, errors: ['Tarea no encontrada.'] };
+            }
+            const check = KanbanContext.validateTaskPayload(action.payload || {});
+            if (!check.valid) {
+              return { success: false, errors: check.errors };
+            }
+            const updatedTask = {
+              ...state.tasks[idx],
+              ...check.sanitized
+            };
+            const nextTasks = [...state.tasks];
+            nextTasks[idx] = updatedTask;
+            state = {
+              ...state,
+              lastUpdated: nowISO,
+              tasks: nextTasks
+            };
+            persistSync(state);
+            notify(meta);
+            return { success: true, task: updatedTask };
+          }
+
+          if (action.type === 'DELETE_TASK') {
+            state = {
+              ...state,
+              lastUpdated: nowISO,
+              tasks: state.tasks.filter(t => t.id !== action.id)
+            };
+            persistSync(state);
+            notify(meta);
+            return { success: true };
+          }
+
+          if (action.type === 'SET_WIP_LIMIT') {
+            const limit = Math.max(1, Math.min(20, Number(action.wipLimit) || 3));
+            state = {
+              ...state,
+              lastUpdated: nowISO,
+              settings: {
+                ...state.settings,
+                wipLimit: limit
+              }
+            };
+            persistSync(state);
+            notify(meta);
+            return { success: true, wipLimit: limit };
+          }
+
+          if (action.type === 'MOVE_TASK') {
+            const { id, targetStatus } = action;
+            const permission = KanbanContext.canMoveToStatus(state, id, targetStatus);
+            if (!permission.allowed) {
+              meta = {
+                type: action.type,
+                success: false,
+                wipBlocked: Boolean(permission.wipBlocked),
+                reason: permission.reason
+              };
+              notify(meta);
+              return {
+                success: false,
+                wipBlocked: Boolean(permission.wipBlocked),
+                reason: permission.reason
+              };
+            }
+            if (permission.noOp) {
+              return { success: true, noOp: true };
+            }
+
+            const taskIdx = state.tasks.findIndex(t => t.id === id);
+            const currentTask = state.tasks[taskIdx];
+            let updatedTask = {
+              ...currentTask,
+              status: targetStatus
+            };
+
+            let updatedUser = { ...state.user };
+            let rewardSummary = null;
+            let triggeredBounce = false;
+
+            if (targetStatus === 'done') {
+              triggeredBounce = true;
+              updatedTask.completedAt = nowISO;
+              if (!currentTask.rewarded) {
+                rewardSummary = GamificationContext.calculateTaskReward(updatedTask, nowISO);
+                const nextXp = updatedUser.xp + rewardSummary.totalXp;
+                const nextCoins = updatedUser.coins + rewardSummary.totalCoins;
+                const nextLevel = GamificationContext.calculateLevelFromXp(nextXp);
+                const streakUpdate = GamificationContext.updateStreakOnTaskCompletion(updatedUser, nowISO);
+
+                updatedUser = {
+                  ...updatedUser,
+                  xp: nextXp,
+                  coins: nextCoins,
+                  level: nextLevel,
+                  streakDays: streakUpdate.streakDays,
+                  lastActiveDate: streakUpdate.lastActiveDate
+                };
+                updatedTask.rewarded = true;
+                updatedTask.xpGenerated = rewardSummary.totalXp;
+              }
+            } else if (currentTask.status === 'done' && targetStatus !== 'done') {
+              updatedTask.completedAt = null;
+            }
+
+            const nextTasks = [...state.tasks];
+            nextTasks[taskIdx] = updatedTask;
+
+            const draftState = {
+              ...state,
+              lastUpdated: nowISO,
+              user: updatedUser,
+              tasks: nextTasks
+            };
+
+            // Verificar logros desbloqueados en BuddyContext
+            const achievementCheck = BuddyContext.unlockEarnedAchievements(draftState);
+            state = {
+              ...draftState,
+              buddy: {
+                ...draftState.buddy,
+                inventory: achievementCheck.inventory
+              }
+            };
+
+            meta = {
+              type: action.type,
+              success: true,
+              triggeredBounce,
+              rewardSummary,
+              newlyUnlocked: achievementCheck.newlyUnlocked
+            };
+            persistSync(state);
+            notify(meta);
+            return {
+              success: true,
+              triggeredBounce,
+              rewardSummary,
+              newlyUnlocked: achievementCheck.newlyUnlocked
+            };
+          }
+
+          if (action.type === 'BUY_SPRITE') {
+            const sprite = SPRITE_CATALOG.find(s => s.id === action.spriteId);
+            if (!sprite) {
+              return { success: false, reason: 'El accesorio no existe en el catálogo.' };
+            }
+            if (state.buddy.inventory.includes(sprite.id)) {
+              return { success: false, reason: 'El accesorio ya está desbloqueado.' };
+            }
+            if (sprite.unlockType === 'achievement') {
+              return { success: false, reason: 'Este accesorio solo se desbloquea por logro.' };
+            }
+            if (state.user.level < sprite.minLevel) {
+              return { success: false, reason: `Requiere nivel mínimo ${sprite.minLevel}.` };
+            }
+            if (state.user.coins < sprite.cost) {
+              return { success: false, reason: 'Saldo insuficiente de monedas.' };
+            }
+
+            state = {
+              ...state,
+              lastUpdated: nowISO,
+              user: {
+                ...state.user,
+                coins: state.user.coins - sprite.cost
+              },
+              buddy: {
+                ...state.buddy,
+                equipped: {
+                  ...state.buddy.equipped,
+                  [sprite.layer]: sprite.id
+                },
+                inventory: [...state.buddy.inventory, sprite.id]
+              }
+            };
+            persistSync(state);
+            notify({ type: 'BUY_SPRITE', success: true, sprite });
+            return { success: true, sprite };
+          }
+
+          if (action.type === 'EQUIP_SPRITE') {
+            const sprite = SPRITE_CATALOG.find(s => s.id === action.spriteId);
+            if (!sprite || !state.buddy.inventory.includes(sprite.id)) {
+              return { success: false, reason: 'No posees este accesorio en tu inventario.' };
+            }
+            if (sprite.layer === 'base') {
+              return { success: true };
+            }
+            state = {
+              ...state,
+              lastUpdated: nowISO,
+              buddy: {
+                ...state.buddy,
+                equipped: {
+                  ...state.buddy.equipped,
+                  [sprite.layer]: sprite.id
+                }
+              }
+            };
+            persistSync(state);
+            notify({ type: 'EQUIP_SPRITE', success: true, sprite });
+            return { success: true, sprite };
+          }
+
+          if (action.type === 'IMPORT_STATE_JSON') {
+            let parsed = action.payload;
+            if (typeof parsed === 'string') {
+              try {
+                parsed = JSON.parse(parsed);
+              } catch (_err) {
+                return { success: false, errors: ['El archivo no contiene un JSON sintácticamente válido.'] };
+              }
+            }
+            const validation = PersistenceContext.validateStateSchema(parsed);
+            if (!validation.valid) {
+              return { success: false, errors: validation.errors };
+            }
+            state = JSON.parse(JSON.stringify(parsed));
+            persistSync(state);
+            notify({ type: 'IMPORT_STATE_JSON', success: true });
+            return { success: true };
+          }
+
+          return { success: false, reason: 'Acción desconocida.' };
+        }
+
+        loadInitialState();
+
+        return {
+          getState,
+          dispatch,
+          subscribe,
+          loadInitialState
+        };
+      }
+
+      // ==========================================================================
+      // RENDERIZADO SVG PIXEL ART Y CONTROLADOR DOM (Solo en navegador con document)
+      // ==========================================================================
+      function renderRectsIntoSvg(svgEl, rects) {
+        if (!svgEl) return;
+        svgEl.innerHTML = (rects || [])
+          .map(r => `<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" fill="${r.fill}" />`)
+          .join('');
+      }
+
+      function initBrowserApp() {
+        if (typeof document === 'undefined') return;
+
+        const store = createAppStore(typeof localStorage !== 'undefined' ? localStorage : null);
+        let draggedTaskId = null;
+
+        // Referencias DOM
+        const elBuddyStage = document.getElementById('buddyStage');
+        const elSvgBase = document.getElementById('svgLayerBase');
+        const elSvgBody = document.getElementById('svgLayerBody');
+        const elSvgHead = document.getElementById('svgLayerHead');
+        const elSvgHand = document.getElementById('svgLayerHand');
+        const elSvgAura = document.getElementById('svgLayerAura');
+        const elSvgStress = document.getElementById('svgLayerStress');
+        const elBuddyMoodBadge = document.getElementById('buddyMoodBadge');
+        const elBuddyMoodSubtext = document.getElementById('buddyMoodSubtext');
+
+        const elStatLevel = document.getElementById('statLevel');
+        const elStatXpText = document.getElementById('statXpText');
+        const elXpBarFill = document.getElementById('xpBarFill');
+        const elXpProgressBar = document.getElementById('xpProgressBar');
+        const elStatCoins = document.getElementById('statCoins');
+        const elStatStreak = document.getElementById('statStreak');
+        const elInputWipLimit = document.getElementById('inputWipLimit');
+        const elColInProgress = document.getElementById('colInProgress');
+
+        const elAlertBanner = document.getElementById('systemAlertBanner');
+        const elAlertText = document.getElementById('systemAlertText');
+
+        const modalTaskForm = document.getElementById('modalTaskForm');
+        const formTask = document.getElementById('taskForm');
+        const fieldId = document.getElementById('taskFieldId');
+        const fieldTitle = document.getElementById('taskFieldTitle');
+        const fieldCategory = document.getElementById('taskFieldCategory');
+        const fieldPriority = document.getElementById('taskFieldPriority');
+        const fieldEffort = document.getElementById('taskFieldEffort');
+        const fieldDeadline = document.getElementById('taskFieldDeadline');
+        const elTitleCounter = document.getElementById('titleCharCounter');
+        const elTaskFormError = document.getElementById('taskFormError');
+
+        const modalBuddyShop = document.getElementById('modalBuddyShop');
+        const elCatalogContainer = document.getElementById('catalogContainer');
+        const elShopBalance = document.getElementById('shopModalBalance');
+
+        const modalSelfTests = document.getElementById('modalSelfTests');
+        const elSelfTestSummary = document.getElementById('selfTestSummary');
+        const elSelfTestOutput = document.getElementById('selfTestOutput');
+
+        function showBanner(message, isInfo) {
+          elAlertText.textContent = message;
+          elAlertBanner.className = isInfo ? 'alert-banner info' : 'alert-banner';
+          elAlertBanner.hidden = false;
+        }
+
+        function hideBanner() {
+          elAlertBanner.hidden = true;
+        }
+
+        function renderBuddy(currentState, meta) {
+          const findSprite = (id) => SPRITE_CATALOG.find(s => s.id === id);
+          const baseSprite = findSprite('base_dev');
+          const bodySprite = findSprite(currentState.buddy.equipped.body);
+          const headSprite = findSprite(currentState.buddy.equipped.head);
+          const handSprite = findSprite(currentState.buddy.equipped.hand);
+          const auraSprite = findSprite(currentState.buddy.equipped.aura);
+
+          renderRectsIntoSvg(elSvgBase, baseSprite ? baseSprite.rects : []);
+          renderRectsIntoSvg(elSvgBody, bodySprite ? bodySprite.rects : []);
+          renderRectsIntoSvg(elSvgHead, headSprite ? headSprite.rects : []);
+          renderRectsIntoSvg(elSvgHand, handSprite ? handSprite.rects : []);
+          renderRectsIntoSvg(elSvgAura, auraSprite ? auraSprite.rects : []);
+
+          const isStressed = BuddyContext.hasOverdueTasksInProgress(currentState, new Date().toISOString());
+          if (isStressed) {
+            renderRectsIntoSvg(elSvgStress, STRESS_SPRITE_RECTS);
+            elBuddyStage.classList.add('is-stressed');
+            elBuddyMoodBadge.textContent = '¡Estresado!';
+            elBuddyMoodBadge.classList.add('stressed');
+            elBuddyMoodSubtext.textContent = 'Tareas vencidas en En Proceso';
+          } else {
+            renderRectsIntoSvg(elSvgStress, []);
+            elBuddyStage.classList.remove('is-stressed');
+            elBuddyMoodBadge.textContent = 'Enfocado';
+            elBuddyMoodBadge.classList.remove('stressed');
+            elBuddyMoodSubtext.textContent = 'Flujo saludable y al día';
+          }
+
+          if (meta && meta.triggeredBounce) {
+            elBuddyStage.classList.remove('is-bouncing');
+            void elBuddyStage.offsetWidth;
+            elBuddyStage.classList.add('is-bouncing');
+          }
+        }
+
+        function renderStats(currentState) {
+          const { xp, level, coins, streakDays } = currentState.user;
+          const nextThreshold = GamificationContext.xpRequiredForLevelStep(level);
+          const prevThreshold = level > 1 ? GamificationContext.xpRequiredForLevelStep(level - 1) : 0;
+          const span = Math.max(1, nextThreshold - prevThreshold);
+          const pct = Math.min(100, Math.max(0, Math.round(((xp - prevThreshold) / span) * 100)));
+
+          elStatLevel.textContent = String(level);
+          elStatXpText.textContent = `${xp} / ${nextThreshold} XP`;
+          elXpBarFill.style.width = `${pct}%`;
+          elXpProgressBar.setAttribute('aria-valuenow', String(pct));
+          elStatCoins.textContent = String(coins);
+          elStatStreak.textContent = String(streakDays);
+          elInputWipLimit.value = String(currentState.settings.wipLimit);
+        }
+
+        function createTaskCardElement(task, currentDateYMD) {
+          const article = document.createElement('article');
+          article.className = 'task-card';
+          article.setAttribute('draggable', 'true');
+          article.setAttribute('data-task-id', task.id);
+          article.setAttribute('data-priority', task.priority);
+
+          const colIdx = COLUMNS.indexOf(task.status);
+          const prevCol = colIdx > 0 ? COLUMNS[colIdx - 1] : null;
+          const nextCol = colIdx < COLUMNS.length - 1 ? COLUMNS[colIdx + 1] : null;
+          const isOverdue = task.status !== 'done' && task.deadline < currentDateYMD;
+
+          const topMeta = document.createElement('div');
+          topMeta.className = 'task-top-meta';
+
+          const catBadge = document.createElement('span');
+          catBadge.className = 'badge';
+          catBadge.textContent = task.category;
+
+          const prioBadge = document.createElement('span');
+          prioBadge.className = `badge badge-prio-${task.priority}`;
+          prioBadge.textContent = task.priority;
+
+          topMeta.appendChild(catBadge);
+          topMeta.appendChild(prioBadge);
+
+          const titleEl = document.createElement('h3');
+          titleEl.className = 'task-title';
+          titleEl.textContent = task.title;
+
+          const detailsRow = document.createElement('div');
+          detailsRow.className = 'task-details-row';
+
+          const effortSpan = document.createElement('span');
+          const effortLabel = task.effort === 1 ? '1 pt (Rápida)' : task.effort === 2 ? '2 pts (Media)' : '3 pts (Compleja)';
+          effortSpan.textContent = `⚙️ ${effortLabel}`;
+
+          const deadlineSpan = document.createElement('span');
+          deadlineSpan.className = isOverdue ? 'deadline-tag overdue' : 'deadline-tag';
+          deadlineSpan.textContent = `${isOverdue ? '⚠️ Vencida: ' : '📅 '}${task.deadline}`;
+
+          detailsRow.appendChild(effortSpan);
+          detailsRow.appendChild(deadlineSpan);
+
+          // Controles accesibles (◀ y ▶) + Editar/Eliminar (RF-03)
+          const controlsRow = document.createElement('div');
+          controlsRow.className = 'task-controls';
+
+          const moveGroup = document.createElement('div');
+          moveGroup.className = 'move-btn-group';
+
+          const btnPrev = document.createElement('button');
+          btnPrev.type = 'button';
+          btnPrev.className = 'icon-btn';
+          btnPrev.textContent = '◀';
+          btnPrev.title = 'Mover a la columna anterior';
+          btnPrev.setAttribute('aria-label', `Mover "${task.title}" a columna anterior`);
+          btnPrev.disabled = !prevCol;
+          if (prevCol) {
+            btnPrev.addEventListener('click', () => {
+              store.dispatch({ type: 'MOVE_TASK', id: task.id, targetStatus: prevCol });
+            });
+          }
+
+          const btnNext = document.createElement('button');
+          btnNext.type = 'button';
+          btnNext.className = 'icon-btn';
+          btnNext.textContent = '▶';
+          btnNext.title = 'Mover a la siguiente columna';
+          btnNext.setAttribute('aria-label', `Mover "${task.title}" a siguiente columna`);
+          btnNext.disabled = !nextCol;
+          if (nextCol) {
+            btnNext.addEventListener('click', () => {
+              store.dispatch({ type: 'MOVE_TASK', id: task.id, targetStatus: nextCol });
+            });
+          }
+
+          moveGroup.appendChild(btnPrev);
+          moveGroup.appendChild(btnNext);
+
+          const crudGroup = document.createElement('div');
+          crudGroup.className = 'crud-btn-group';
+
+          const btnEdit = document.createElement('button');
+          btnEdit.type = 'button';
+          btnEdit.className = 'icon-btn';
+          btnEdit.textContent = '✏️';
+          btnEdit.title = 'Editar tarea';
+          btnEdit.setAttribute('aria-label', `Editar "${task.title}"`);
+          btnEdit.addEventListener('click', () => openTaskModalForEdit(task));
+
+          const btnDelete = document.createElement('button');
+          btnDelete.type = 'button';
+          btnDelete.className = 'icon-btn btn-danger';
+          btnDelete.textContent = '🗑️';
+          btnDelete.title = 'Eliminar tarea';
+          btnDelete.setAttribute('aria-label', `Eliminar "${task.title}"`);
+          btnDelete.addEventListener('click', () => {
+            store.dispatch({ type: 'DELETE_TASK', id: task.id });
+          });
+
+          crudGroup.appendChild(btnEdit);
+          crudGroup.appendChild(btnDelete);
+
+          controlsRow.appendChild(moveGroup);
+          controlsRow.appendChild(crudGroup);
+
+          article.appendChild(topMeta);
+          article.appendChild(titleEl);
+          article.appendChild(detailsRow);
+          article.appendChild(controlsRow);
+
+          // Eventos HTML5 Drag and Drop (RF-03)
+          article.addEventListener('dragstart', (e) => {
+            draggedTaskId = task.id;
+            article.classList.add('dragging');
+            if (e.dataTransfer) {
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', task.id);
+            }
+          });
+
+          article.addEventListener('dragend', () => {
+            draggedTaskId = null;
+            article.classList.remove('dragging');
+            document.querySelectorAll('.kanban-column').forEach(c => c.classList.remove('drag-over'));
+          });
+
+          return article;
+        }
+
+        function renderBoard(currentState, meta) {
+          const todayYMD = formatDateYMD(new Date().toISOString());
+          const wipLimit = currentState.settings.wipLimit;
+
+          for (const colStatus of COLUMNS) {
+            const listEl = document.getElementById(`list-${colStatus}`);
+            const countEl = document.getElementById(`count-${colStatus}`);
+            const tasksInCol = currentState.tasks.filter(t => t.status === colStatus);
+
+            listEl.innerHTML = '';
+            if (tasksInCol.length === 0) {
+              const emptyDiv = document.createElement('div');
+              emptyDiv.className = 'empty-column';
+              emptyDiv.textContent = 'Sin tareas en esta columna';
+              listEl.appendChild(emptyDiv);
+            } else {
+              for (const task of tasksInCol) {
+                listEl.appendChild(createTaskCardElement(task, todayYMD));
+              }
+            }
+
+            if (colStatus === 'in_progress') {
+              countEl.textContent = `${tasksInCol.length} / ${wipLimit}`;
+              countEl.className = 'column-count';
+              if (meta && meta.wipBlocked) {
+                countEl.classList.add('wip-blocked-badge');
+                elColInProgress.classList.add('wip-locked');
+              } else if (tasksInCol.length >= wipLimit) {
+                countEl.classList.add('wip-at-limit');
+                elColInProgress.classList.remove('wip-locked');
+              } else {
+                elColInProgress.classList.remove('wip-locked');
+              }
+            } else {
+              countEl.textContent = String(tasksInCol.length);
+            }
+          }
+        }
+
+        function renderShopCatalog(currentState) {
+          if (!elCatalogContainer) return;
+          const items = BuddyContext.classifyCatalogForState(currentState);
+          elShopBalance.textContent = `🪙 ${currentState.user.coins} Monedas | NVL ${currentState.user.level}`;
+          elCatalogContainer.innerHTML = '';
+
+          const categoryLabels = {
+            unlocked_equipped: 'Desbloqueado / Equipado',
+            available_for_purchase: 'Disponible para compra',
+            locked_by_achievement: 'Bloqueado por logro'
+          };
+
+          for (const item of items) {
+            const card = document.createElement('div');
+            card.className = `sprite-card ${item.isEquipped ? 'equipped' : ''}`;
+
+            const previewBox = document.createElement('div');
+            previewBox.className = 'sprite-preview-box';
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('viewBox', '0 0 16 16');
+            svg.setAttribute('shape-rendering', 'crispEdges');
+            svg.setAttribute('class', 'buddy-svg-layer');
+            renderRectsIntoSvg(svg, item.rects);
+            previewBox.appendChild(svg);
+
+            const infoDiv = document.createElement('div');
+            infoDiv.innerHTML = `
+              <div style="font-size:0.68rem; color:var(--accent-primary); font-weight:700; text-transform:uppercase;">
+                Capa ${item.layerIndex} (${item.layer}) • ${categoryLabels[item.category]}
+              </div>
+              <div style="font-weight:700; font-size:0.88rem; margin-top:0.15rem;">${item.name}</div>
+              <div style="font-size:0.74rem; color:var(--text-secondary); margin-top:0.2rem;">${item.description}</div>
+            `;
+
+            const actionBtn = document.createElement('button');
+            actionBtn.type = 'button';
+            actionBtn.style.width = '100%';
+            actionBtn.style.justifyContent = 'center';
+
+            if (item.isEquipped) {
+              actionBtn.textContent = '✓ Equipado';
+              actionBtn.disabled = true;
+            } else if (item.isOwned) {
+              actionBtn.textContent = 'Equipar ahora';
+              actionBtn.className = 'btn-primary';
+              actionBtn.addEventListener('click', () => {
+                store.dispatch({ type: 'EQUIP_SPRITE', spriteId: item.id });
+              });
+            } else if (item.category === 'available_for_purchase') {
+              actionBtn.textContent = `Comprar (🪙 ${item.cost} • NVL ${item.minLevel})`;
+              actionBtn.disabled = !item.canBuy;
+              if (item.canBuy) {
+                actionBtn.className = 'btn-primary';
+                actionBtn.addEventListener('click', () => {
+                  store.dispatch({ type: 'BUY_SPRITE', spriteId: item.id });
+                });
+              }
+            } else {
+              actionBtn.textContent = `🔒 Logro: ${item.achievementRule}`;
+              actionBtn.disabled = true;
+              actionBtn.style.fontSize = '0.7rem';
+            }
+
+            card.appendChild(previewBox);
+            card.appendChild(infoDiv);
+            card.appendChild(actionBtn);
+            elCatalogContainer.appendChild(card);
+          }
+        }
+
+        function openTaskModalForCreate() {
+          document.getElementById('modalTaskTitle').textContent = 'Nueva Tarea';
+          fieldId.value = '';
+          fieldTitle.value = '';
+          fieldCategory.value = 'Operación';
+          fieldPriority.value = 'Media';
+          fieldEffort.value = '2';
+          fieldDeadline.value = formatDateYMD(new Date().toISOString());
+          elTitleCounter.textContent = '0 / 80 caracteres';
+          elTaskFormError.hidden = true;
+          modalTaskForm.showModal();
+          fieldTitle.focus();
+        }
+
+        function openTaskModalForEdit(task) {
+          document.getElementById('modalTaskTitle').textContent = 'Editar Tarea';
+          fieldId.value = task.id;
+          fieldTitle.value = task.title;
+          fieldCategory.value = task.category;
+          fieldPriority.value = task.priority;
+          fieldEffort.value = String(task.effort);
+          fieldDeadline.value = task.deadline;
+          elTitleCounter.textContent = `${task.title.length} / 80 caracteres`;
+          elTaskFormError.hidden = true;
+          modalTaskForm.showModal();
+          fieldTitle.focus();
+        }
+
+        // Suscripción MVI
+        store.subscribe((nextState, meta) => {
+          renderBuddy(nextState, meta);
+          renderStats(nextState);
+          renderBoard(nextState, meta);
+          renderShopCatalog(nextState);
+
+          if (meta && meta.wipBlocked) {
+            showBanner(meta.reason, false);
+          } else if (meta && meta.rewardSummary) {
+            const r = meta.rewardSummary;
+            showBanner(
+              `🎉 ¡Tarea completada! Ganaste +${r.totalXp} XP y +${r.totalCoins} Monedas${r.isOnTime ? ' (incluye Bono de Puntualidad)' : ''}.`,
+              true
+            );
+          }
+        });
+
+        // Configurar Dropzones en las 4 columnas (RF-03)
+        document.querySelectorAll('.kanban-column').forEach(sectionEl => {
+          const targetStatus = sectionEl.getAttribute('data-status');
+          sectionEl.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            sectionEl.classList.add('drag-over');
+          });
+          sectionEl.addEventListener('dragleave', () => {
+            sectionEl.classList.remove('drag-over');
+          });
+          sectionEl.addEventListener('drop', (e) => {
+            e.preventDefault();
+            sectionEl.classList.remove('drag-over');
+            const taskId = draggedTaskId || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
+            if (taskId && targetStatus) {
+              store.dispatch({ type: 'MOVE_TASK', id: taskId, targetStatus });
+            }
+          });
+        });
+
+        // Controles de Cabecera y Formularios
+        document.getElementById('btnNewTask').addEventListener('click', openTaskModalForCreate);
+        document.getElementById('btnCloseTaskModal').addEventListener('click', () => modalTaskForm.close());
+        document.getElementById('btnCancelTaskModal').addEventListener('click', () => modalTaskForm.close());
+
+        fieldTitle.addEventListener('input', () => {
+          elTitleCounter.textContent = `${fieldTitle.value.length} / 80 caracteres`;
+        });
+
+        formTask.addEventListener('submit', (e) => {
+          e.preventDefault();
+          const payload = {
+            title: fieldTitle.value,
+            category: fieldCategory.value,
+            priority: fieldPriority.value,
+            effort: Number(fieldEffort.value),
+            deadline: fieldDeadline.value
+          };
+          const existingId = fieldId.value.trim();
+          const res = existingId
+            ? store.dispatch({ type: 'UPDATE_TASK', id: existingId, payload })
+            : store.dispatch({ type: 'CREATE_TASK', payload });
+
+          if (!res.success) {
+            elTaskFormError.textContent = (res.errors || [res.reason]).join(' ');
+            elTaskFormError.hidden = false;
+            return;
+          }
+          modalTaskForm.close();
+        });
+
+        elInputWipLimit.addEventListener('change', () => {
+          store.dispatch({ type: 'SET_WIP_LIMIT', wipLimit: Number(elInputWipLimit.value) });
+        });
+
+        document.getElementById('btnDismissAlert').addEventListener('click', hideBanner);
+
+        // Tienda Buddy Modal
+        document.getElementById('btnOpenShop').addEventListener('click', () => {
+          renderShopCatalog(store.getState());
+          modalBuddyShop.showModal();
+        });
+        document.getElementById('btnCloseShopModal').addEventListener('click', () => modalBuddyShop.close());
+        document.getElementById('btnDoneShopModal').addEventListener('click', () => modalBuddyShop.close());
+
+        // Exportación JSON (RF-12)
+        document.getElementById('btnExportJson').addEventListener('click', () => {
+          const snapshot = store.getState();
+          const dateStr = formatDateYMD(new Date().toISOString());
+          const fileName = `kanban_backup_${dateStr}.json`;
+          const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+          showBanner(`💾 Respaldo exportado: ${fileName}`, true);
+        });
+
+        // Importación JSON con FileReader y validación de esquema (RF-13)
+        const fileImportInput = document.getElementById('fileImportJson');
+        document.getElementById('btnImportJsonTrigger').addEventListener('click', () => {
+          fileImportInput.value = '';
+          fileImportInput.click();
+        });
+
+        fileImportInput.addEventListener('change', () => {
+          const file = fileImportInput.files && fileImportInput.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const content = String(ev.target.result || '');
+            const result = store.dispatch({ type: 'IMPORT_STATE_JSON', payload: content });
+            if (!result.success) {
+              showBanner(`❌ Archivo JSON rechazado por validación de esquema: ${(result.errors || []).join(' ')}`, false);
+            } else {
+              showBanner('✅ Estado restaurado exitosamente desde el respaldo JSON.', true);
+            }
+          };
+          reader.readAsText(file);
+        });
+
+        // Exportación CSV (RF-14)
+        document.getElementById('btnExportCsv').addEventListener('click', () => {
+          const csvString = PersistenceContext.generateProductivityCsv(store.getState());
+          const dateStr = formatDateYMD(new Date().toISOString());
+          const fileName = `kanban_productividad_${dateStr}.csv`;
+          const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+          showBanner(`📊 Reporte CSV descargado: ${fileName}`, true);
+        });
+
+        // Runner de Pruebas Automatizadas In-Browser
+        document.getElementById('btnRunSelfTests').addEventListener('click', () => {
+          const report = runEmbeddedTestSuite();
+          elSelfTestSummary.textContent = `Resultado: ${report.passed}/${report.total} pruebas en VERDE (${report.failed} fallos)`;
+          elSelfTestSummary.style.color = report.failed === 0 ? 'var(--accent-success)' : 'var(--accent-danger)';
+          elSelfTestOutput.textContent = report.logs.join('\n');
+          modalSelfTests.showModal();
+        });
+        document.getElementById('btnCloseTestsModal').addEventListener('click', () => modalSelfTests.close());
+        document.getElementById('btnCloseTestsFooter').addEventListener('click', () => modalSelfTests.close());
+
+        // Render inicial
+        const initial = store.getState();
+        renderBuddy(initial, {});
+        renderStats(initial);
+        renderBoard(initial, {});
+      }
+
+      // ==========================================================================
+      // SUITE DE PRUEBAS AUTOMATIZADAS EMBEBIDA (TDD & Cero Regresión)
+      // ==========================================================================
+      function runEmbeddedTestSuite() {
+        const logs = [];
+        let passed = 0;
+        let failed = 0;
+
+        function assert(condition, testName) {
+          if (condition) {
+            passed += 1;
+            logs.push(`✅ PASS: ${testName}`);
+          } else {
+            failed += 1;
+            logs.push(`❌ FAIL: ${testName}`);
+          }
+        }
+
+        // Mock storage aislado
+        const mem = {};
+        const mockStorage = {
+          getItem: (k) => (k in mem ? mem[k] : null),
+          setItem: (k, v) => { mem[k] = String(v); }
+        };
+
+        const testStore = createAppStore(mockStorage);
+
+        // 1. RF-01 & RF-11: Estado inicial y clave localStorage
+        assert(Boolean(mem[STORAGE_KEY]), 'RF-11: Sincronización síncrona en clave única kanban_gamified_v1');
+        assert(COLUMNS.length === 4, 'RF-01: Existen exactamente 4 columnas de flujo (backlog, in_progress, review, done)');
+
+        // 2. RF-02: Validación de tareas (título <= 80 chars, campos obligatorios)
+        const invalidRes = testStore.dispatch({
+          type: 'CREATE_TASK',
+          payload: { title: 'A'.repeat(81), category: 'Operación', priority: 'Alta', effort: 2, deadline: '2026-10-30' }
+        });
+        assert(invalidRes.success === false, 'RF-02: Rechaza títulos mayores a 80 caracteres');
+
+        const validRes = testStore.dispatch({
+          type: 'CREATE_TASK',
+          nowISO: '2026-10-23T10:00:00.000Z',
+          payload: { title: 'Tarea de prueba TDD', category: 'Cliente', priority: 'Urgente', effort: 3, deadline: '2026-10-25' }
+        });
+        assert(validRes.success === true && validRes.task.id.startsWith('tsk_'), 'RF-02: Crea tarea válida con UUID/prefijo tsk_');
+
+        // 3. RF-04: Límite WIP en En Proceso
+        testStore.dispatch({ type: 'SET_WIP_LIMIT', wipLimit: 1 });
+        const blockedMove = testStore.dispatch({
+          type: 'MOVE_TASK',
+          id: validRes.task.id,
+          targetStatus: 'in_progress'
+        });
+        assert(blockedMove.success === false && blockedMove.wipBlocked === true, 'RF-04: Bloquea movimiento cuando se alcanza el WIP Limit');
+
+        // 4. RF-05 & RF-06: Cálculo de XP, Monedas y Curva de Niveles (100 * N^1.2)
+        const reward = GamificationContext.calculateTaskReward(
+          { effort: 3, priority: 'Urgente', deadline: '2026-10-25' },
+          '2026-10-23'
+        );
+        assert(reward.totalXp === 65 && reward.totalCoins === 25, 'RF-05: Cálculo exacto XP (30+15+20=65) y Monedas (15+10=25)');
+        assert(GamificationContext.xpRequiredForLevelStep(1) === 100 && GamificationContext.calculateLevelFromXp(350) === 3, 'RF-06: Curva 100 * N^1.2 consistente con SRS (350 XP -> Nivel 3)');
+
+        // 5. RF-07: Control de rachas y reinicio tras >48h
+        const streakReset = GamificationContext.evaluateStreakOnInactivity(
+          { streakDays: 4, lastActiveDate: '2026-10-20' },
+          '2026-10-24T12:00:00.000Z'
+        );
+        assert(streakReset.streakDays === 0, 'RF-07: Reinicia la racha a 0 si transcurren más de 48 horas sin cerrar tareas');
+
+        // 6. RF-08 & RF-09: 15 Sprites modulares en 5 capas
+        assert(BuddyContext.getCatalog().length === 15, 'RF-08/RF-09: Catálogo contiene exactamente 15 sprites modulares en 5 capas');
+
+        // 7. RF-13 & RF-14: Validación JSON Schema y Exportación CSV
+        const badImport = testStore.dispatch({ type: 'IMPORT_STATE_JSON', payload: '{"version":"1.0.0","tasks":"corrupto"}' });
+        assert(badImport.success === false, 'RF-13: Previene sobreescritura ante archivo JSON corrupto');
+
+        const csv = PersistenceContext.generateProductivityCsv(testStore.getState());
+        assert(csv.startsWith('ID,Título,Categoría,Prioridad,Fecha_Terminación,XP_Generado'), 'RF-14: Cabeceras CSV exactas');
+
+        return { total: passed + failed, passed, failed, logs };
+      }
+
+      const PublicAPI = {
+        STORAGE_KEY,
+        SCHEMA_VERSION,
+        COLUMNS,
+        CATEGORIES,
+        PRIORITIES,
+        EFFORTS,
+        SPRITE_CATALOG,
+        GamificationContext,
+        KanbanContext,
+        BuddyContext,
+        PersistenceContext,
+        createAppStore,
+        runEmbeddedTestSuite
+      };
+
+      root.KanbanGamifiedApp = PublicAPI;
+      if (typeof module !== 'undefined' && module.exports) {
+        module.exports = PublicAPI;
+      }
+
+      if (typeof document !== 'undefined') {
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', initBrowserApp);
+        } else {
+          initBrowserApp();
+        }
+      }
+    })(typeof globalThis !== 'undefined' ? globalThis : window);
+  </script>
+</body>
+</html>

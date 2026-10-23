@@ -186,3 +186,30 @@ sequenceDiagram
 }
 ```
 *(Nota: Las tareas completadas pueden almacenar adicionalmente metadatos opcionales compatibles como `xpGenerated` y `rewarded` para alimentar con precisión la columna `XP_Generado` del reporte CSV de `RF-14` y garantizar idempotencia).*
+
+
+---
+
+## 5. Extensión de Arquitectura para `CR-01` (Motor de Revisión Horaria en `KanbanContext`)
+
+```mermaid
+sequenceDiagram
+    participant Timer as Reloj Horario / Reapertura HTML
+    participant Store as AppStore (MVI)
+    participant Kanban as KanbanContext (Hourly Review)
+    participant Storage as localStorage ('kanban_gamified_v1')
+    participant UI as Banner/Toast + Insignia en Tarjetas
+
+    Timer->>Store: dispatch({ type: 'RUN_HOURLY_CHECK', nowISO })
+    Store->>Kanban: evaluateHourlyInProgressReview(state, nowISO)
+    Kanban-->>Store: { due: true, inProgressTasksWithDuration, nextLastHourlyCheckAt }
+    Store->>Storage: setItem('kanban_gamified_v1', updatedState)
+    Store->>UI: Renderiza Toast/Banner de Revisión Horaria + Insignia ⏱️ en cada tarjeta En Proceso
+```
+
+### Contratos de Dominio de `CR-01` en `KanbanContext`:
+- **`formatElapsedDuration(sinceISO, nowISO)`**: Calcula la diferencia en milisegundos y devuelve `{ totalMinutes, hours, minutes, formatted }` (ej. `"2h 15m"` o `"45m"`).
+- **`evaluateHourlyInProgressReview(state, nowISO, force)`**:
+  - Verifica si `(Date.parse(nowISO) - Date.parse(state.settings.lastHourlyCheckAt)) >= 3600000` (o si `force === true`).
+  - Si se cumple el intervalo de 1 hora (`3,600,000 ms`), recopila todas las tareas con `status === 'in_progress'`, calculando para cada una su tiempo de permanencia desde `task.inProgressSince || task.createdAt || state.lastUpdated`.
+  - Retorna `{ shouldNotify, tasksInProcess, checkedAt: nowISO }`.

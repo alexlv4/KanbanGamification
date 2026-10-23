@@ -488,6 +488,66 @@
       font-weight: 700;
     }
 
+    /* CR-01: Insignia de tiempo en En Proceso y Notificación Horaria (RF-15, RF-16) */
+    .badge-in-progress-time {
+      font-size: 0.72rem;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      padding: 0.14rem 0.5rem;
+      border-radius: 4px;
+      background: rgba(251, 191, 36, 0.16);
+      color: var(--accent-warning);
+      border: 1px solid rgba(251, 191, 36, 0.45);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    article.task-card.hourly-reviewed {
+      box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.55), 0 4px 12px rgba(0, 0, 0, 0.35);
+    }
+
+    .hourly-review-toast {
+      margin: 0.75rem 1.25rem 0;
+      padding: 0.85rem 1.1rem;
+      border-radius: var(--radius-md);
+      background: rgba(251, 191, 36, 0.12);
+      border: 1px solid var(--accent-warning);
+      color: var(--text-primary);
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .hourly-review-toast[hidden] {
+      display: none !important;
+    }
+
+    .hourly-review-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      font-weight: 700;
+      color: #fde68a;
+    }
+
+    .hourly-review-list {
+      list-style: none;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      font-size: 0.82rem;
+    }
+
+    .hourly-review-item {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 0.3rem 0.65rem;
+      font-family: var(--font-mono);
+    }
+
     .task-controls {
       display: flex;
       align-items: center;
@@ -700,6 +760,7 @@
       <button type="button" id="btnImportJsonTrigger" title="Restaurar respaldo desde archivo .json (RF-13)">📂 Importar JSON</button>
       <input type="file" id="fileImportJson" accept=".json" hidden>
       <button type="button" id="btnExportCsv" title="Descargar reporte de productividad .csv (RF-14)">📊 Exportar CSV</button>
+      <button type="button" id="btnHourlyReviewCheck" title="Ejecutar o verificar revisión horaria de tareas En Proceso (CR-01)">⏱️ Revisión 1h</button>
       <button type="button" id="btnRunSelfTests" title="Ejecutar suite de verificación AI-DLC">🧪 Verificar (Tests)</button>
     </div>
   </header>
@@ -708,6 +769,15 @@
   <div id="systemAlertBanner" class="alert-banner" role="alert" hidden>
     <span id="systemAlertText"></span>
     <button type="button" id="btnDismissAlert" class="icon-btn">Cerrar ✕</button>
+  </div>
+
+  <!-- CR-01 (RF-15, RF-16): Notificación Visual de Revisión Horaria para Tareas en Proceso -->
+  <div id="hourlyReviewToast" class="hourly-review-toast" role="status" aria-live="polite" hidden>
+    <div class="hourly-review-header">
+      <span id="hourlyReviewTitle">⏰ Revisión Horaria: Tareas que se mantienen En Proceso</span>
+      <button type="button" id="btnDismissHourlyToast" class="icon-btn">Entendido ✕</button>
+    </div>
+    <ul id="hourlyReviewList" class="hourly-review-list"></ul>
   </div>
 
   <!-- Módulo A: Tablero Kanban de 4 Columnas (RF-01, RF-03, RF-04) -->
@@ -1383,6 +1453,58 @@
             }
           }
           return { allowed: true };
+        },
+
+        /**
+         * CR-01 (RF-15, RF-16): Formatea el tiempo transcurrido en la columna En Proceso.
+         */
+        formatElapsedDuration(sinceISO, nowISO) {
+          const startMs = Date.parse(sinceISO || nowISO);
+          const endMs = Date.parse(nowISO || new Date().toISOString());
+          if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs <= startMs) {
+            return { totalMinutes: 0, hours: 0, minutes: 0, formatted: '< 1m' };
+          }
+          const totalMinutes = Math.floor((endMs - startMs) / (1000 * 60));
+          const hours = Math.floor(totalMinutes / 60);
+          const minutes = totalMinutes % 60;
+          const formatted = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+          return { totalMinutes, hours, minutes, formatted };
+        },
+
+        /**
+         * CR-01 (RF-15, RF-16): Evalúa si corresponde ejecutar la revisión horaria (>= 60 min)
+         * y retorna todas las tareas que se mantienen en "En Proceso" con su duración acumulada.
+         */
+        evaluateHourlyInProgressReview(state, nowISO, forceCheck) {
+          const currentISO = nowISO || new Date().toISOString();
+          const lastCheckISO = (state.settings && state.settings.lastHourlyCheckAt) || state.lastUpdated || currentISO;
+          const lastMs = Date.parse(lastCheckISO);
+          const nowMs = Date.parse(currentISO);
+          const elapsedMs = (!Number.isNaN(lastMs) && !Number.isNaN(nowMs)) ? (nowMs - lastMs) : 0;
+          const isHourDue = Boolean(forceCheck) || elapsedMs >= 3600000;
+
+          const tasksInProcess = (state.tasks || [])
+            .filter(t => t.status === 'in_progress')
+            .map(t => {
+              const since = t.inProgressSince || t.createdAt || state.lastUpdated || currentISO;
+              const duration = this.formatElapsedDuration(since, currentISO);
+              return {
+                id: t.id,
+                title: t.title,
+                priority: t.priority,
+                category: t.category,
+                inProgressSince: since,
+                duration
+              };
+            });
+
+          return {
+            isHourDue,
+            elapsedMs,
+            shouldNotify: isHourDue && tasksInProcess.length > 0,
+            tasksInProcess,
+            checkedAt: currentISO
+          };
         }
       };
 
@@ -1498,7 +1620,8 @@
               ]
             },
             settings: {
-              wipLimit: 3
+              wipLimit: 3,
+              lastHourlyCheckAt: iso
             },
             tasks: [
               {
@@ -1510,6 +1633,7 @@
                 status: 'in_progress',
                 deadline: '2026-10-25',
                 createdAt: '2026-10-22T14:30:00.000Z',
+                inProgressSince: '2026-10-22T14:30:00.000Z',
                 completedAt: null
               }
             ]
@@ -1641,7 +1765,7 @@
       // ==========================================================================
       // CAPA DE APLICACIÓN: MVI / STORE UNIDIRECCIONAL (State -> Render -> Event)
       // ==========================================================================
-      function createAppStore(storageAdapter) {
+      function createAppStore(storageAdapter, initialNowISO) {
         let state = null;
         const listeners = [];
 
@@ -1662,9 +1786,22 @@
                 if (validation.valid) {
                   // Verificar inactividad >48h al iniciar (RF-07)
                   const updatedUser = GamificationContext.evaluateStreakOnInactivity(parsed.user, currentISO);
+                  // Hidratar sellos de tiempo retrocompatibles para CR-01 (RF-15)
+                  const hydratedTasks = (parsed.tasks || []).map(t => {
+                    if (t.status === 'in_progress' && !t.inProgressSince) {
+                      return { ...t, inProgressSince: t.createdAt || parsed.lastUpdated || currentISO };
+                    }
+                    return t;
+                  });
+                  const hydratedSettings = {
+                    ...parsed.settings,
+                    lastHourlyCheckAt: (parsed.settings && parsed.settings.lastHourlyCheckAt) || parsed.lastUpdated || currentISO
+                  };
                   state = {
                     ...parsed,
-                    user: updatedUser
+                    user: updatedUser,
+                    settings: hydratedSettings,
+                    tasks: hydratedTasks
                   };
                   persistSync(state);
                   return state;
@@ -1712,6 +1849,7 @@
               status: 'backlog',
               deadline: check.sanitized.deadline,
               createdAt: nowISO,
+              inProgressSince: null,
               completedAt: null
             };
             state = {
@@ -1803,6 +1941,13 @@
               status: targetStatus
             };
 
+            // CR-01 (RF-15): Registrar o limpiar sello de entrada a En Proceso
+            if (targetStatus === 'in_progress') {
+              updatedTask.inProgressSince = nowISO;
+            } else {
+              updatedTask.inProgressSince = null;
+            }
+
             let updatedUser = { ...state.user };
             let rewardSummary = null;
             let triggeredBounce = false;
@@ -1866,6 +2011,47 @@
               triggeredBounce,
               rewardSummary,
               newlyUnlocked: achievementCheck.newlyUnlocked
+            };
+          }
+
+          if (action.type === 'RUN_HOURLY_CHECK') {
+            const evaluation = KanbanContext.evaluateHourlyInProgressReview(
+              state,
+              nowISO,
+              Boolean(action.force)
+            );
+            if (!evaluation.isHourDue) {
+              return {
+                success: true,
+                isHourDue: false,
+                shouldNotify: false,
+                tasksInProcess: evaluation.tasksInProcess
+              };
+            }
+
+            state = {
+              ...state,
+              lastUpdated: nowISO,
+              settings: {
+                ...state.settings,
+                lastHourlyCheckAt: nowISO
+              }
+            };
+            persistSync(state);
+            meta = {
+              type: 'RUN_HOURLY_CHECK',
+              success: true,
+              isHourDue: true,
+              shouldNotify: evaluation.shouldNotify,
+              hourlyReviewReport: evaluation
+            };
+            notify(meta);
+            return {
+              success: true,
+              isHourDue: true,
+              shouldNotify: evaluation.shouldNotify,
+              tasksInProcess: evaluation.tasksInProcess,
+              checkedAt: nowISO
             };
           }
 
@@ -1954,7 +2140,7 @@
           return { success: false, reason: 'Acción desconocida.' };
         }
 
-        loadInitialState();
+        loadInitialState(initialNowISO);
 
         return {
           getState,
@@ -2002,6 +2188,11 @@
 
         const elAlertBanner = document.getElementById('systemAlertBanner');
         const elAlertText = document.getElementById('systemAlertText');
+        const elHourlyToast = document.getElementById('hourlyReviewToast');
+        const elHourlyTitle = document.getElementById('hourlyReviewTitle');
+        const elHourlyList = document.getElementById('hourlyReviewList');
+
+        let highlightedHourlyTaskIds = new Set();
 
         const modalTaskForm = document.getElementById('modalTaskForm');
         const formTask = document.getElementById('taskForm');
@@ -2030,6 +2221,29 @@
 
         function hideBanner() {
           elAlertBanner.hidden = true;
+        }
+
+        function renderHourlyReviewToast(report) {
+          if (!elHourlyToast || !report || !report.shouldNotify) return;
+          highlightedHourlyTaskIds = new Set(report.tasksInProcess.map(t => t.id));
+          elHourlyTitle.textContent = `⏰ Revisión Horaria (${report.tasksInProcess.length} ${report.tasksInProcess.length === 1 ? 'tarea se mantiene' : 'tareas se mantienen'} En Proceso)`;
+          elHourlyList.innerHTML = '';
+
+          for (const item of report.tasksInProcess) {
+            const li = document.createElement('li');
+            li.className = 'hourly-review-item';
+            li.textContent = `⚡ ${item.title} (${item.priority}) — ⏱️ ${item.duration.formatted} en proceso`;
+            elHourlyList.appendChild(li);
+          }
+          elHourlyToast.hidden = false;
+        }
+
+        function hideHourlyReviewToast() {
+          if (elHourlyToast) {
+            elHourlyToast.hidden = true;
+          }
+          highlightedHourlyTaskIds.clear();
+          renderBoard(store.getState(), {});
         }
 
         function renderBuddy(currentState, meta) {
@@ -2084,9 +2298,10 @@
           elInputWipLimit.value = String(currentState.settings.wipLimit);
         }
 
-        function createTaskCardElement(task, currentDateYMD) {
+        function createTaskCardElement(task, currentDateYMD, nowISO) {
           const article = document.createElement('article');
-          article.className = 'task-card';
+          const isHourlyHighlighted = task.status === 'in_progress' && highlightedHourlyTaskIds.has(task.id);
+          article.className = isHourlyHighlighted ? 'task-card hourly-reviewed' : 'task-card';
           article.setAttribute('draggable', 'true');
           article.setAttribute('data-task-id', task.id);
           article.setAttribute('data-priority', task.priority);
@@ -2109,6 +2324,17 @@
 
           topMeta.appendChild(catBadge);
           topMeta.appendChild(prioBadge);
+
+          // CR-01 (RF-16): Insignia de tiempo en cada tarjeta dentro de En Proceso
+          if (task.status === 'in_progress') {
+            const sinceISO = task.inProgressSince || task.createdAt || nowISO;
+            const duration = KanbanContext.formatElapsedDuration(sinceISO, nowISO);
+            const timeBadge = document.createElement('span');
+            timeBadge.className = 'badge-in-progress-time';
+            timeBadge.setAttribute('data-in-progress-badge', 'true');
+            timeBadge.textContent = `⏱️ En proceso: ${duration.formatted}`;
+            topMeta.appendChild(timeBadge);
+          }
 
           const titleEl = document.createElement('h3');
           titleEl.className = 'task-title';
@@ -2216,7 +2442,8 @@
         }
 
         function renderBoard(currentState, meta) {
-          const todayYMD = formatDateYMD(new Date().toISOString());
+          const nowISO = new Date().toISOString();
+          const todayYMD = formatDateYMD(nowISO);
           const wipLimit = currentState.settings.wipLimit;
 
           for (const colStatus of COLUMNS) {
@@ -2232,7 +2459,7 @@
               listEl.appendChild(emptyDiv);
             } else {
               for (const task of tasksInCol) {
-                listEl.appendChild(createTaskCardElement(task, todayYMD));
+                listEl.appendChild(createTaskCardElement(task, todayYMD, nowISO));
               }
             }
 
@@ -2354,6 +2581,9 @@
 
         // Suscripción MVI
         store.subscribe((nextState, meta) => {
+          if (meta && meta.hourlyReviewReport && meta.hourlyReviewReport.shouldNotify) {
+            renderHourlyReviewToast(meta.hourlyReviewReport);
+          }
           renderBuddy(nextState, meta);
           renderStats(nextState);
           renderBoard(nextState, meta);
@@ -2426,6 +2656,15 @@
         });
 
         document.getElementById('btnDismissAlert').addEventListener('click', hideBanner);
+        document.getElementById('btnDismissHourlyToast').addEventListener('click', hideHourlyReviewToast);
+
+        // Botón manual/inmediato de Revisión Horaria (CR-01)
+        document.getElementById('btnHourlyReviewCheck').addEventListener('click', () => {
+          const checkRes = store.dispatch({ type: 'RUN_HOURLY_CHECK', force: true });
+          if (!checkRes.shouldNotify) {
+            showBanner('✅ Revisión horaria completada: No hay tareas pendientes en la columna "En Proceso".', true);
+          }
+        });
 
         // Tienda Buddy Modal
         document.getElementById('btnOpenShop').addEventListener('click', () => {
@@ -2503,11 +2742,21 @@
         document.getElementById('btnCloseTestsModal').addEventListener('click', () => modalSelfTests.close());
         document.getElementById('btnCloseTestsFooter').addEventListener('click', () => modalSelfTests.close());
 
-        // Render inicial
+        // Render inicial + Evaluación de Revisión Horaria al reabrir el archivo HTML (CR-01 / RF-15)
         const initial = store.getState();
         renderBuddy(initial, {});
         renderStats(initial);
         renderBoard(initial, {});
+        store.dispatch({ type: 'RUN_HOURLY_CHECK' });
+
+        // Temporizador activo en segundo plano: verifica cada 60 segundos si se cumplió el ciclo de 1 hora (60 min)
+        // y refresca las insignias de tiempo transcurrido en las tarjetas En Proceso.
+        setInterval(() => {
+          const checkRes = store.dispatch({ type: 'RUN_HOURLY_CHECK' });
+          if (!checkRes.isHourDue) {
+            renderBoard(store.getState(), {});
+          }
+        }, 60000);
       }
 
       // ==========================================================================
@@ -2535,7 +2784,7 @@
           setItem: (k, v) => { mem[k] = String(v); }
         };
 
-        const testStore = createAppStore(mockStorage);
+        const testStore = createAppStore(mockStorage, '2026-10-23T10:00:00.000Z');
 
         // 1. RF-01 & RF-11: Estado inicial y clave localStorage
         assert(Boolean(mem[STORAGE_KEY]), 'RF-11: Sincronización síncrona en clave única kanban_gamified_v1');
@@ -2588,6 +2837,19 @@
 
         const csv = PersistenceContext.generateProductivityCsv(testStore.getState());
         assert(csv.startsWith('ID,Título,Categoría,Prioridad,Fecha_Terminación,XP_Generado'), 'RF-14: Cabeceras CSV exactas');
+
+        // 8. CR-01 (RF-15 & RF-16): Revisión horaria de tareas que se mantienen En Proceso
+        const beforeHour = testStore.dispatch({
+          type: 'RUN_HOURLY_CHECK',
+          nowISO: '2026-10-23T10:30:00.000Z'
+        });
+        assert(beforeHour.isHourDue === false && beforeHour.shouldNotify === false, 'RF-15: No dispara notificación antes de cumplirse 60 minutos');
+
+        const afterHour = testStore.dispatch({
+          type: 'RUN_HOURLY_CHECK',
+          nowISO: '2026-10-23T11:05:00.000Z'
+        });
+        assert(afterHour.isHourDue === true && afterHour.shouldNotify === true && afterHour.tasksInProcess.length === 1, 'RF-16: Dispara notificación horaria al superar 60 min con tareas En Proceso y calcula duración');
 
         return { total: passed + failed, passed, failed, logs };
       }

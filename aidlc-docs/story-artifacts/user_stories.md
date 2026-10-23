@@ -182,3 +182,39 @@ Feature: Persistencia Local, Portabilidad JSON y Exportación CSV
     Then se descarga un archivo ".csv" cuya primera fila de encabezados es exactamente:
       "ID,Título,Categoría,Prioridad,Fecha_Terminación,XP_Generado"
 ```
+
+
+---
+
+## US-06: Revisión Horaria y Notificación Visual de Tareas en Proceso (CR-01)
+**Como** usuario del tablero Kanban,  
+**Quiero** que el sistema realice una revisión automática cada hora (incluyendo cuando reabro el archivo tras haber pasado 60 minutos o más) y me muestre una notificación visual dentro de la aplicación junto con el tiempo que lleva cada tarea en la columna *En Proceso*,  
+**Para** mantener visibilidad constante sobre las tareas activas y evitar que se queden estancadas sin cerrarse.
+
+- **Requerimientos vinculados:** `CR-01`, `RF-15`, `RF-16`
+
+### Criterios de Aceptación (Gherkin)
+```gherkin
+Feature: Revisión Horaria y Notificación de Tareas en Proceso
+
+  Scenario: Registro de marca de tiempo al mover una tarea a En Proceso
+    Given una tarea en la columna "Por Hacer" (backlog)
+    When el usuario mueve la tarea a "En Proceso" (in_progress) en el instante "2026-10-23T12:00:00.000Z"
+    Then la tarea registra "inProgressSince" igual a "2026-10-23T12:00:00.000Z"
+    And la tarjeta en "En Proceso" muestra una insignia visual con el tiempo transcurrido en esa columna
+
+  Scenario: Disparo de notificación visual al cumplirse 1 hora (60 minutos) con pestaña abierta o al reabrir
+    Given que la última revisión horaria "lastHourlyCheckAt" ocurrió en "2026-10-23T12:00:00.000Z"
+    And existen tareas activas en la columna "En Proceso" (in_progress)
+    When el reloj del sistema o la reapertura del archivo alcanza o supera "2026-10-23T13:00:00.000Z" (>= 60 minutos)
+    Then el sistema ejecuta la acción de revisión horaria ("RUN_HOURLY_CHECK")
+    And actualiza "settings.lastHourlyCheckAt" a la hora actual
+    And muestra una notificación visual dentro de la aplicación (banner/toast interactivo) listando las tareas que se mantienen en "En Proceso" y cuánto tiempo llevan ahí
+    And resalta visualmente las tarjetas en "En Proceso" con su insignia de tiempo transcurrido
+
+  Scenario: Sin notificación intrusiva cuando no hay tareas en En Proceso
+    Given que transcurren 60 minutos desde "lastHourlyCheckAt"
+    And existen 0 tareas en la columna "En Proceso"
+    When se ejecuta la revisión horaria automática
+    Then se actualiza "settings.lastHourlyCheckAt" sin mostrar alerta de tareas estancadas
+```

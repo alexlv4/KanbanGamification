@@ -70,3 +70,32 @@ https://github.com/alexlv4/KanbanGamification.git
 ```markdown
 Ya realice la opcion A
 ```
+
+
+---
+
+## Prompt #05 — Solicitud de Nuevo Requerimiento (CR-01: Revisión Horaria y Notificación de Tareas en Proceso) (2026-10-23)
+
+### Texto del Prompt:
+```markdown
+Quiero agregar una funcionalidad que haga una revisión cada hora y que mande una notificación en las tareas que se mantienen en proceso para que el usuario pueda ver esto, recuerda hacerme preguntas para clarificar la funcionalidad en caso de ser necesario
+```
+
+
+### Clarificación Interactiva del Usuario (Respuestas a `ask_question` para CR-01):
+1. **¿Por qué canal(es) deseas que se muestre la notificación cada hora?**
+   - **Respuesta:** Notificación visual dentro de la aplicación (banner/toast interactivo + insignia de tiempo en cada tarjeta en proceso).
+2. **¿Qué criterio debe disparar la notificación durante la revisión horaria?**
+   - **Respuesta:** Notificar todas las tareas que actualmente estén en la columna "En Proceso" (mostrando cuánto tiempo llevan ahí).
+3. **¿Cómo debe comportarse el reloj de 1 hora si el usuario cierra y vuelve a abrir el archivo HTML?**
+   - **Respuesta:** Sí, evaluar el tiempo transcurrido desde la última revisión al reabrir el archivo `.html` (usando `localStorage`) además del temporizador activo cada 60 min.
+
+
+---
+
+## Prompt #06 — Confirmación del Plan de Construcción Bolt 2 (CR-01) (2026-10-23)
+
+### Texto del Prompt:
+```markdown
+Confirmo
+```

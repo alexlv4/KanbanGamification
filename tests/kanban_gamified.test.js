@@ -213,3 +213,53 @@ test('RF-11, RF-12, RF-13 & RF-14 + Matriz de Trazabilidad (Aislamiento, Idempot
   assert.equal(lines[0], 'ID,Título,Categoría,Prioridad,Fecha_Terminación,XP_Generado');
   assert.match(lines[1], /^tsk_8f12a,Documentar lineamientos de seguridad,Calidad\/Norma,Alta,2026-10-23T18:00:00\.000Z,45$/);
 });
+
+test('CR-01 (RF-15 & RF-16): Revisión horaria, seguimiento de permanencia en En Proceso y notificación visual', () => {
+  const storage = createMemoryStorage();
+  const store = App.createAppStore(storage, '2026-10-23T10:00:00.000Z');
+
+  // Crear nueva tarea y moverla a En Proceso a las 10:15
+  const created = store.dispatch({
+    type: 'CREATE_TASK',
+    nowISO: '2026-10-23T10:10:00.000Z',
+    payload: {
+      title: 'Optimizar consultas locales',
+      category: 'Operación',
+      priority: 'Alta',
+      effort: 2,
+      deadline: '2026-10-26'
+    }
+  });
+  store.dispatch({
+    type: 'MOVE_TASK',
+    id: created.task.id,
+    targetStatus: 'in_progress',
+    nowISO: '2026-10-23T10:15:00.000Z'
+  });
+
+  const movedTask = store.getState().tasks.find(t => t.id === created.task.id);
+  assert.equal(movedTask.inProgressSince, '2026-10-23T10:15:00.000Z', 'RF-15: Debe registrar inProgressSince al entrar a En Proceso');
+
+  // A las 10:45 (30 min desde lastHourlyCheckAt=10:00) aún no debe disparar la notificación horaria automática
+  const earlyCheck = store.dispatch({
+    type: 'RUN_HOURLY_CHECK',
+    nowISO: '2026-10-23T10:45:00.000Z'
+  });
+  assert.equal(earlyCheck.isHourDue, false);
+  assert.equal(earlyCheck.shouldNotify, false);
+
+  // Simular cierre y reapertura del archivo HTML a las 11:30 (>= 60 min desde 10:00) leyendo desde localStorage
+  const reopenedStore = App.createAppStore(storage);
+  const dueCheck = reopenedStore.dispatch({
+    type: 'RUN_HOURLY_CHECK',
+    nowISO: '2026-10-23T11:30:00.000Z'
+  });
+  assert.equal(dueCheck.isHourDue, true, 'RF-15: Debe detectar que transcurrió >= 1 hora al reabrir o por temporizador');
+  assert.equal(dueCheck.shouldNotify, true, 'RF-16: Debe notificar porque existen tareas en En Proceso');
+  assert.equal(dueCheck.tasksInProcess.length, 2, 'RF-16: Debe incluir todas las tareas actuales en En Proceso');
+
+  const trackedItem = dueCheck.tasksInProcess.find(t => t.id === created.task.id);
+  assert.equal(trackedItem.duration.formatted, '1h 15m', 'RF-16: Debe calcular con exactitud el tiempo que lleva en En Proceso');
+  assert.equal(reopenedStore.getState().settings.lastHourlyCheckAt, '2026-10-23T11:30:00.000Z', 'RF-15: Debe persistir el nuevo lastHourlyCheckAt');
+});
+

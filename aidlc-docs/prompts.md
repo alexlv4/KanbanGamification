@@ -60,3 +60,13 @@ Confirmo, puedes ir subiendo los cambios necesarios a mi github?
 ```markdown
 https://github.com/alexlv4/KanbanGamification.git
 ```
+
+
+---
+
+## Prompt #04 — Confirmación de Configuración de Llave SSH en GitHub (2026-10-23)
+
+### Texto del Prompt:
+```markdown
+Ya realice la opcion A
+```

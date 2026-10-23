@@ -99,3 +99,13 @@ Quiero agregar una funcionalidad que haga una revisión cada hora y que mande un
 ```markdown
 Confirmo
 ```
+
+
+---
+
+## Prompt #07 — Solicitud de Documentación `README.md`, Descripción del Proyecto y Publicación de Release v1.0.0 (2026-10-23)
+
+### Texto del Prompt:
+```markdown
+Esta version me gusta, agrega una descriopcion, un readme para que sepan las funcionalidades y haz el release
+```

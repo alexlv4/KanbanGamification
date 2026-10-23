@@ -50,3 +50,13 @@ aidlc-docs/
 ```markdown
 Confirmo, puedes ir subiendo los cambios necesarios a mi github?
 ```
+
+
+---
+
+## Prompt #03 — Configuración de Repositorio Remoto en GitHub (2026-10-23)
+
+### Texto del Prompt:
+```markdown
+https://github.com/alexlv4/KanbanGamification.git
+```
